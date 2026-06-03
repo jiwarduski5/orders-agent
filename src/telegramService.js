@@ -16,7 +16,7 @@ function formatTelegramMessage(order, orderNumber) {
   const colorLine = order.color ? `\n🎨 اللون: ${order.color}` : '';
 
   return (
-    `🛒 *طلب جديد #${orderNumber}*\n` +
+    `🛒 <b>طلب جديد #${orderNumber}</b>\n` +
     `━━━━━━━━━━━━━━━\n` +
     `👤 الزبون: @${order.customer}\n` +
     `📅 التاريخ: ${order.date} - ${order.time}\n` +
@@ -53,7 +53,7 @@ async function sendOrderNotification(order, orderNumber) {
       {
         chat_id: chatId,
         text: message,
-        parse_mode: 'Markdown'
+        parse_mode: 'HTML' // Changed from Markdown to HTML to fix formatting errors
       }
     );
 
