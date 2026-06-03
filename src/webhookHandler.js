@@ -173,7 +173,7 @@ async function handleWebhookEvent(req, res) {
       }
     }
 
-    // ── Direct Messages ──
+    // ── Direct Messages (Standard Format) ──
     for (const messaging of entry.messaging || []) {
       if (messaging.message && !messaging.message.is_echo) {
         await processDM(
@@ -181,6 +181,21 @@ async function handleWebhookEvent(req, res) {
           messaging.message.text || '',
           messaging.sender?.id
         );
+      }
+    }
+
+    // ── Direct Messages (Test Button / New API Format) ──
+    for (const change of entry.changes || []) {
+      if (change.field === 'messages') {
+        const msgValue = change.value?.message;
+        const senderId = change.value?.sender?.id;
+        if (msgValue && msgValue.text) {
+          await processDM(
+            msgValue.mid || `test_mid_${Date.now()}`,
+            msgValue.text,
+            senderId
+          );
+        }
       }
     }
   }
