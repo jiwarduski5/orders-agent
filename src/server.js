@@ -16,17 +16,14 @@ const PORT = process.env.PORT || 3000;
 // ─── Middleware ───────────────────────────────────────────────────────────────
 
 // Save raw body for Meta signature verification
-app.use((req, res, next) => {
-  let data = '';
-  req.on('data', chunk => { data += chunk; });
-  req.on('end', () => {
-    req.rawBody = data;
-    next();
-  });
-});
-
-app.use(express.json());
+// Save raw body for Meta signature verification safely
+app.use(express.json({
+  verify: (req, res, buf) => {
+    req.rawBody = buf.toString();
+  }
+}));
 app.use(express.urlencoded({ extended: true }));
+
 
 // ─── Routes ───────────────────────────────────────────────────────────────────
 
