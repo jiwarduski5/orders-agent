@@ -72,6 +72,7 @@ const SIZE_PATTERNS = [
 
 // ─── Quantity patterns ──────────────────────────────────────────────────────
 const QUANTITY_PATTERNS = [
+  /(?:qty|quantity|الكمية|عدد|هژمار)\s*:?\s*(\d+)/i,
   /(\d+)\s*(حبة|حبات|قطعة|قطع|عدد|كيلو|كيلوغرام)/,
   /(\d+)\s*(دانه|دانەی|دانە|پارچه)/,
   /(\d+)\s*(pieces?|items?|units?|kg|kilo)/i,
@@ -181,6 +182,26 @@ function extractName(text) {
       if (name.length >= 2 && name.length <= 40) return name;
     }
   }
+
+  // Fallback: Look at the first 4 lines for a human name
+  // Must be 2-4 words, only letters/spaces, not a greeting or common item
+  const lines = text.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+  for (let i = 0; i < Math.min(4, lines.length); i++) {
+    const line = lines[i];
+    // Check if line is only letters (Arabic, Kurdish, English) and spaces, 5-40 chars
+    if (/^[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FFa-zA-Z\s]{5,40}$/.test(line)) {
+      const words = line.trim().split(/\s+/);
+      if (words.length >= 2 && words.length <= 4) {
+        // Reject if it contains common non-name words
+        const lower = line.toLowerCase();
+        const rejectWords = ['slav', 'سلاو', 'مرحبا', 'hello', 'hi', 'address', 'phone', 'qty', 'size', 'color', 't-shirt', 'shirt', 'قميص', 'پانتۆڵ', 'بنطلون', 'رقم', 'عنوان', 'الاسم'];
+        if (!rejectWords.some(w => lower.includes(w))) {
+          return line;
+        }
+      }
+    }
+  }
+
   return '';
 }
 
