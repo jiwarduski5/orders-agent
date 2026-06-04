@@ -13,28 +13,28 @@ const axios = require('axios');
  * Formats the order details into a readable Telegram message (HTML)
  */
 function formatTelegramMessage(order, orderNumber) {
-  const phoneLine = order.phone ? `\n📱 الهاتف: ${order.phone}` : '';
-  const addressLine = order.address ? `\n📍 العنوان: ${order.address}` : '';
-  const nameLine = order.customerName ? `\n👤 الاسم: ${order.customerName}` : '';
-  const colorLine = order.color ? `\n🎨 اللون: ${order.color}` : '';
+  const phoneLine = `\n📱 Phone: ${order.phone || '—'}`;
+  const addressLine = `\n📍 Address: ${order.address || '—'}`;
+  const nameLine = `\n👤 Name: ${order.customerName || '—'}`;
+  const colorLine = `\n🎨 Color: ${order.color || '—'}`;
 
   return (
     `🛒 <b>داخوازیەکا نوی #${orderNumber}</b>\n` +
     `\n` +
-    `🔗 بکر: @${order.customer}` +
+    `🔗 User: @${order.customer}` +`🔗 Name: @${order.customerName}` +
     nameLine +
     phoneLine +
     addressLine +
     `\n\n` +
-    `📅 دەم: ${order.date} - ${order.time}\n` +
+    `📅 Date: ${order.date} - ${order.time}\n` +
     `\n` +
-    `🔢 الكمية: ${order.quantity}\n` +
-    `📐 المقاس: ${order.size}` +
+    `🔢 Qty: ${order.quantity}\n` +
+    `📐 Size: ${order.size}` +
     colorLine +
     `\n\n` +
-    `💬 الرسالة الكاملة:\n"${order.rawMessage}"\n` +
+    `💬 Full Message:\n"${order.rawMessage}"\n` +
     `\n` +
-    `📌 الحالة: ${order.status}`
+    `📌 Status: ${order.status}`
   );
 }
 
@@ -45,12 +45,12 @@ function formatRawMessage(senderId, rawText) {
   return (
     `📩 <b> نامەکا نوی</b>\n` +
     `\n` +
-    `🔗 ژ: user_${senderId}\n` +
-    `📅 دەم: ${new Date().toLocaleString('ar-IQ')}\n` +
+    `🔗 From: user_${senderId}\n` +
+    `📅 Date: ${new Date().toLocaleString('ar-IQ')}\n` +
     `\n` +
-    `💬 نامە:\n"${rawText}"\n` +
+    `💬 Message:\n"${rawText}"\n` +
     `\n` +
-    `⚠️ لم يتم التعرف على الطلب تلقائياً`
+    `⚠️ Could not auto-detect order details`
   );
 }
 
