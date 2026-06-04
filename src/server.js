@@ -4,7 +4,7 @@
  * Main Express server entry point.
  * Starts the HTTP server, registers routes, and initializes services.
  */
-// triggering 
+
 require('dotenv').config();
 const express = require('express');
 const { handleVerification, handleWebhookEvent } = require('./webhookHandler');
@@ -15,7 +15,6 @@ const PORT = process.env.PORT || 3000;
 
 // ─── Middleware ───────────────────────────────────────────────────────────────
 
-// Save raw body for Meta signature verification
 // Save raw body for Meta signature verification safely
 app.use(express.json({
   verify: (req, res, buf) => {
@@ -24,14 +23,13 @@ app.use(express.json({
 }));
 app.use(express.urlencoded({ extended: true }));
 
-
 // ─── Routes ───────────────────────────────────────────────────────────────────
 
 // Health check (used by UptimeRobot to keep server alive)
 app.get('/', (req, res) => {
   res.json({
     status: 'running',
-    service: 'Instagram Order Agent',
+    service: 'Instagram Order Agent v2.0',
     time: new Date().toISOString(),
   });
 });
@@ -47,12 +45,13 @@ app.post('/webhook', handleWebhookEvent);
 app.listen(PORT, async () => {
   console.log('');
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-  console.log('  🚀 Instagram Order Agent Started');
+  console.log('  🚀 Instagram Order Agent v2.0');
   console.log(`  📡 Listening on port ${PORT}`);
+  console.log('  💬 Auto-reply + Message buffering enabled');
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
   console.log('');
 
-  // Initialize token manager (Risk #2 fix)
+  // Initialize token manager
   try {
     await initTokenManager();
   } catch (err) {

@@ -3,6 +3,9 @@
  *
  * Writes order data to a Google Sheet.
  * Uses a Service Account so no user login is required.
+ *
+ * Updated columns:
+ * #, التاريخ, الوقت, اسم المستخدم, الاسم, الهاتف, العنوان, المنتج, الكمية, المقاس, اللون, الرسالة الكاملة, الحالة
  */
 
 const { google } = require('googleapis');
@@ -21,13 +24,15 @@ const HEADERS = [
   '#',
   'التاريخ',
   'الوقت',
-  'المستخدم',
-  'الرسالة الكاملة',
+  'اسم المستخدم',
+  'الاسم',
+  'الهاتف',
+  'العنوان',
+  'المنتج',
   'الكمية',
   'المقاس',
   'اللون',
-  'المنتج',
-  'رقم المنشور',
+  'الرسالة الكاملة',
   'الحالة',
 ];
 
@@ -38,7 +43,7 @@ const HEADERS = [
 async function ensureHeader(sheets, spreadsheetId) {
   const res = await sheets.spreadsheets.values.get({
     spreadsheetId,
-    range: 'Sheet1!A1:K1',
+    range: 'Sheet1!A1:M1',
   });
 
   const rows = res.data.values;
@@ -62,7 +67,6 @@ async function getNextRowNumber(sheets, spreadsheetId) {
     range: 'Sheet1!A:A',
   });
   const rows = res.data.values || [];
-  // rows includes the header, so subtract 1 for actual order count
   return Math.max(rows.length - 1, 0) + 1;
 }
 
@@ -84,18 +88,20 @@ async function appendOrder(order) {
       order.date,
       order.time,
       order.customer,
-      order.rawMessage,
+      order.customerName || '—',
+      order.phone || '—',
+      order.address || '—',
+      order.product,
       order.quantity,
       order.size,
       order.color || '—',
-      order.product,
-      order.postId || '—',
+      order.rawMessage,
       order.status,
     ];
 
     await sheets.spreadsheets.values.append({
       spreadsheetId,
-      range: 'Sheet1!A:K',
+      range: 'Sheet1!A:M',
       valueInputOption: 'USER_ENTERED',
       insertDataOption: 'INSERT_ROWS',
       requestBody: { values: [row] },

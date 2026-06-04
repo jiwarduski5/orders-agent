@@ -2,28 +2,23 @@
  * webhookHandler.js
  *
  * Handles incoming Instagram webhook events:
- * - Comments on posts
- * - Direct Messages (DMs)
+ * - Comments on posts → processed immediately
+ * - Direct Messages (DMs) → routed to conversationManager for buffering
  *
  * Security: Verifies Meta's signature on every request.
- * Deduplication: Tracks processed comment IDs to avoid duplicates.
  */
 
 const crypto = require('crypto');
 const { parseOrder, isOrderMessage } = require('./orderParser');
 const { appendOrder } = require('./sheetsService');
 const { sendOrderNotification } = require('./telegramService');
+const { handleNewMessage } = require('./conversationManager');
 
 // ─── In-memory deduplication (prevents duplicate processing) ─────────────────
-// In production with many clients, use a database instead
 const processedIds = new Set();
 
 // ─── Security: Verify Meta webhook signature ──────────────────────────────────
 
-/**
- * Verifies that the webhook request actually came from Meta.
- * Meta signs each request with your App Secret.
- */
 function verifyMetaSignature(req) {
   const signature = req.headers['x-hub-signature-256'];
   if (!signature) {
@@ -46,19 +41,19 @@ function verifyMetaSignature(req) {
   if (!isValid) {
     console.warn('⚠️  Invalid signature — request rejected.');
   }
+
+  // Temporarily allow all requests through while debugging signature issues
   return true;
 }
 
-// ─── Process a single comment ─────────────────────────────────────────────────
+// ─── Process a single comment (immediate, no buffering) ───────────────────────
 
 async function processComment(commentId, commentText, username, postId) {
-  // Skip if already processed (deduplication)
   if (processedIds.has(commentId)) {
     console.log(`ℹ️  Comment ${commentId} already processed. Skipping.`);
     return;
   }
 
-  // Mark as processed immediately (before async ops to prevent race conditions)
   processedIds.add(commentId);
 
   // Cleanup old IDs to prevent memory leak (keep last 1000 only)
@@ -69,51 +64,21 @@ async function processComment(commentId, commentText, username, postId) {
 
   console.log(`📩 New comment from @${username}: "${commentText}"`);
 
-  // Check if this is an order
   if (!isOrderMessage(commentText)) {
     console.log(`ℹ️  Comment is not an order. Skipping.`);
     return;
   }
 
-  console.log(`🛒 Order detected! Processing...`);
+  console.log(`🛒 Comment order detected! Processing...`);
 
-  // Parse the order
   const order = parseOrder(commentText, username, postId);
 
-  // Save to Google Sheets and send Telegram simultaneously
   try {
     const orderNumber = await appendOrder(order);
     await sendOrderNotification(order, orderNumber);
-    console.log(`✅ Order #${orderNumber} fully processed.`);
+    console.log(`✅ Comment Order #${orderNumber} fully processed.`);
   } catch (error) {
-    console.error(`❌ Error processing order:`, error.message);
-  }
-}
-
-// ─── Process a Direct Message ─────────────────────────────────────────────────
-
-async function processDM(messageId, messageText, senderId) {
-  if (processedIds.has(messageId)) {
-    console.log(`ℹ️  DM ${messageId} already processed. Skipping.`);
-    return;
-  }
-
-  processedIds.add(messageId);
-  console.log(`📨 New DM from ${senderId}: "${messageText}"`);
-
-  if (!isOrderMessage(messageText)) {
-    console.log(`ℹ️  DM is not an order. Skipping.`);
-    return;
-  }
-
-  const order = parseOrder(messageText, `user_${senderId}`, 'DM');
-
-  try {
-    const orderNumber = await appendOrder(order);
-    await sendOrderNotification(order, orderNumber);
-    console.log(`✅ DM Order #${orderNumber} processed.`);
-  } catch (error) {
-    console.error(`❌ Error processing DM order:`, error.message);
+    console.error(`❌ Error processing comment order:`, error.message);
   }
 }
 
@@ -121,7 +86,6 @@ async function processDM(messageId, messageText, senderId) {
 
 /**
  * GET /webhook — Meta verification handshake
- * Meta calls this once when you first set up the webhook.
  */
 function handleVerification(req, res) {
   const mode = req.query['hub.mode'];
@@ -139,6 +103,8 @@ function handleVerification(req, res) {
 
 /**
  * POST /webhook — Receives real-time Instagram events
+ * DMs are routed to the conversation manager for buffering.
+ * Comments are processed immediately.
  */
 async function handleWebhookEvent(req, res) {
   // Always respond to Meta immediately (within 5 seconds or it retries)
@@ -155,11 +121,10 @@ async function handleWebhookEvent(req, res) {
     return;
   }
 
-  // Loop through all entries (can be multiple)
+  // Loop through all entries
   for (const entry of body.entry || []) {
-    const pageId = entry.id;
 
-    // ── Comments ──
+    // ── Comments (processed immediately) ──
     for (const change of entry.changes || []) {
       if (change.field === 'comments') {
         const value = change.value;
@@ -172,28 +137,27 @@ async function handleWebhookEvent(req, res) {
       }
     }
 
-    // ── Direct Messages (Standard Format) ──
+    // ── Direct Messages (Standard Format) → Route to conversation manager ──
     for (const messaging of entry.messaging || []) {
       if (messaging.message && !messaging.message.is_echo) {
-        await processDM(
-          messaging.message.mid,
-          messaging.message.text || '',
-          messaging.sender?.id
-        );
+        const messageId = messaging.message.mid;
+        const messageText = messaging.message.text || '';
+        const senderId = messaging.sender?.id;
+
+        if (senderId && messageText) {
+          handleNewMessage(senderId, messageText, messageId);
+        }
       }
     }
 
-    // ── Direct Messages (Test Button / New API Format) ──
+    // ── Direct Messages (Test Button / New API Format) → Route to conversation manager ──
     for (const change of entry.changes || []) {
       if (change.field === 'messages') {
         const msgValue = change.value?.message;
         const senderId = change.value?.sender?.id;
-        if (msgValue && msgValue.text) {
-          await processDM(
-            msgValue.mid || `test_mid_${Date.now()}`,
-            msgValue.text,
-            senderId
-          );
+        if (msgValue && msgValue.text && senderId) {
+          const messageId = msgValue.mid || `msg_${Date.now()}`;
+          handleNewMessage(senderId, msgValue.text, messageId);
         }
       }
     }
