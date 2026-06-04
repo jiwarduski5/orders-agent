@@ -43,10 +43,10 @@ const ORDER_CONFIRMED_MESSAGE =
   `داخازیا بازارکرنەکا خۆش بوتە دخازین! 🛍️💫`;
 
 const MESSAGE_RECEIVED_MESSAGE =
-  `نامەکەت گەیشت! ✅\n` +
+  ` ناماتە گە‌هشت ! ✅\n` +
   `\n` +
-  `بەزووترین کات پەیوەندیت پێوە دەکەین 🙏\n` +
-  `سوپاس بۆ پەیوەندیکردنت! 💫`;
+  `    بزویترین دەم دە پەیوەندیێ بو تە کەین 🙏\n` +
+  `سوپاس بۆ دەمی تە بەریز! 💫`;
 
 // ─── In-memory conversation store ─────────────────────────────────────────────
 // Map<senderId, { messages: string[], timer: NodeJS.Timeout, greeted: boolean, messageIds: Set }>
