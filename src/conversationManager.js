@@ -16,7 +16,7 @@ const { sendOrderNotification, sendRawMessageNotification } = require('./telegra
 const { sendInstagramReply } = require('./instagramReplyService');
 
 // ─── Configuration ────────────────────────────────────────────────────────────
-const BUFFER_TIMEOUT_MS = 2 * 60 * 1000; // 2 minutes
+const BUFFER_TIMEOUT_MS = 1.5 * 60 * 1000; // 1.5 minutes
 
 // ─── Messages (edit these to customize!) ──────────────────────────────────────
 
