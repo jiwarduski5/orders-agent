@@ -16,7 +16,7 @@ const { sendOrderNotification, sendRawMessageNotification } = require('./telegra
 const { sendInstagramReply } = require('./instagramReplyService');
 
 // ─── Configuration ────────────────────────────────────────────────────────────
-const BUFFER_TIMEOUT_MS = 1 * 60 * 1000; // 2 minutes
+const BUFFER_TIMEOUT_MS = 1 * 60 * 1000; // 1 minute
 
 // ─── Messages (edit these to customize!) ──────────────────────────────────────
 
@@ -43,10 +43,10 @@ const ORDER_CONFIRMED_MESSAGE =
   `داخازیا بازارکرنەکا خۆش بوتە دخازین! 🛍️💫`;
 
 const MESSAGE_RECEIVED_MESSAGE =
-  `تم استلام رسالتك! ✅\n` +
+  `نامەکەت گەیشت! ✅\n` +
   `\n` +
-  `سنتواصل معك قريباً 🙏\n` +
-  `شكراً لتواصلك معنا! 💫`;
+  `بەزووترین کات پەیوەندیت پێوە دەکەین 🙏\n` +
+  `سوپاس بۆ پەیوەندیکردنت! 💫`;
 
 // ─── In-memory conversation store ─────────────────────────────────────────────
 // Map<senderId, { messages: string[], timer: NodeJS.Timeout, greeted: boolean, messageIds: Set }>
@@ -55,7 +55,9 @@ const conversations = new Map();
 // Common greetings that should NOT be forwarded to Telegram if sent alone
 const GREETING_WORDS = [
   'hi', 'hello', 'hey', 'مرحبا', 'مرحبًا', 'اهلا', 'أهلا', 'هلا', 'السلام',
-  'السلام عليكم', 'سلام', 'هاي', 'الو', 'شلونكم', 'شلونك'
+  'السلام عليكم', 'سلام', 'هاي', 'الو', 'شلونكم', 'شلونك',
+  // Kurdish greetings
+  'سڵاو', 'سلاو', 'چۆنی', 'باشی', 'slaw', 'choni'
 ];
 
 /**
@@ -120,7 +122,7 @@ function handleNewMessage(senderId, messageText, messageId) {
 }
 
 /**
- * Called when the 2-minute silence timer expires.
+ * Called when the silence timer expires.
  * Combines all buffered messages and processes them as a single order.
  */
 async function processConversation(senderId) {

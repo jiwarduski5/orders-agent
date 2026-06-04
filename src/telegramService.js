@@ -19,21 +19,21 @@ function formatTelegramMessage(order, orderNumber) {
   const colorLine = order.color ? `\n🎨 اللون: ${order.color}` : '';
 
   return (
-    `🛒 <b>طلب جديد #${orderNumber}</b>\n` +
-    `━━━━━━━━━━━━━━━\n` +
-    `🔗 الزبون: @${order.customer}` +
+    `🛒 <b>داخوازیەکا نوی #${orderNumber}</b>\n` +
+    `\n` +
+    `🔗 بکر: @${order.customer}` +
     nameLine +
     phoneLine +
     addressLine +
-    `\n━━━━━━━━━━━━━━━\n` +
-    `📅 التاريخ: ${order.date} - ${order.time}\n` +
-    `━━━━━━━━━━━━━━━\n` +
+    `\n\n` +
+    `📅 دەم: ${order.date} - ${order.time}\n` +
+    `\n` +
     `🔢 الكمية: ${order.quantity}\n` +
     `📐 المقاس: ${order.size}` +
     colorLine +
-    `\n━━━━━━━━━━━━━━━\n` +
+    `\n\n` +
     `💬 الرسالة الكاملة:\n"${order.rawMessage}"\n` +
-    `━━━━━━━━━━━━━━━\n` +
+    `\n` +
     `📌 الحالة: ${order.status}`
   );
 }
@@ -43,13 +43,13 @@ function formatTelegramMessage(order, orderNumber) {
  */
 function formatRawMessage(senderId, rawText) {
   return (
-    `📩 <b>رسالة جديدة</b>\n` +
-    `━━━━━━━━━━━━━━━\n` +
-    `🔗 من: user_${senderId}\n` +
-    `📅 الوقت: ${new Date().toLocaleString('ar-IQ')}\n` +
-    `━━━━━━━━━━━━━━━\n` +
-    `💬 الرسالة:\n"${rawText}"\n` +
-    `━━━━━━━━━━━━━━━\n` +
+    `📩 <b> نامەکا نوی</b>\n` +
+    `\n` +
+    `🔗 ژ: user_${senderId}\n` +
+    `📅 دەم: ${new Date().toLocaleString('ar-IQ')}\n` +
+    `\n` +
+    `💬 نامە:\n"${rawText}"\n` +
+    `\n` +
     `⚠️ لم يتم التعرف على الطلب تلقائياً`
   );
 }
