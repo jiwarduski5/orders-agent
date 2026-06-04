@@ -134,8 +134,14 @@ function extractPhone(text) {
  */
 function extractAddress(text) {
   // Try to find text after address keywords
+  const addressLabels = [
+    'العنوان', 'عنواني', 'عنوان', 'المنطقة', 'منطقة', 'الحي', 'حي',
+    'شارع', 'زنقة', 'محلة',
+    'address', 'street', 'area',
+    'ناونیشان', 'شەقام', 'گەڕەک'
+  ];
   const addressRegex = new RegExp(
-    `(?:${ADDRESS_KEYWORDS.slice(0, 10).join('|')})\\s*:?\\s*(.{3,80})`,
+    `(?:${addressLabels.join('|')})\\s*:?\\s*(.{3,80})`,
     'i'
   );
   const match = text.match(addressRegex);
