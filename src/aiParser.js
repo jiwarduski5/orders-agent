@@ -1,103 +1,86 @@
 /**
  * aiParser.js
  *
- * AI-powered order parser using Google Gemini (FREE tier).
- * Sends the customer's raw message to Gemini and gets back
+ * AI-powered order parser using Groq API (FREE Llama 3 70B model).
+ * Sends the customer's raw message to Groq and gets back
  * perfectly extracted order fields in JSON.
  *
- * This is the PRIMARY brain. If Gemini fails, the system
- * falls back to the old Regex-based parser (orderParser.js).
+ * This is the PRIMARY brain. If Groq fails, the system
+ * falls back to the Regex-based parser (orderParser.js).
  */
 
 const axios = require('axios');
 
-// ─── Gemini API Configuration ─────────────────────────────────────────────────
-const GEMINI_API_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent';
+// ─── Groq API Configuration ───────────────────────────────────────────────────
+const GROQ_API_URL = 'https://api.groq.com/openai/v1/chat/completions';
+const MODEL_NAME = 'llama3-70b-8192'; // The smartest, fastest free model
 
 // ─── The AI Prompt (this is the "brain") ──────────────────────────────────────
-const SYSTEM_PROMPT = `You are an expert multilingual order extraction assistant for an online store. You understand Arabic, Kurdish (both Badini/Kurmanji and Sorani dialects), and English perfectly.
+const SYSTEM_PROMPT = `You are an expert multilingual order extraction assistant for an online store. You understand Arabic, Kurdish (both Badini/Kurmanji and Sorani dialects), and English.
 
-Your job is to read a customer's Instagram DM message and extract all order details.
+Your job is to read a customer's Instagram DM message and extract all order details into JSON format.
 
 RULES:
-1. Extract these fields from the message: customerName, phone, address, product, quantity, size, color
+1. Extract these exact fields: "customerName", "phone", "address", "product", "quantity", "size", "color"
 2. If a field is not mentioned, set it to an empty string ""
 3. For phone numbers: normalize Arabic digits (٠١٢٣٤٥٦٧٨٩) to English digits (0123456789). Remove spaces and dashes.
 4. For quantity: if not explicitly mentioned, default to "1"
 5. For size: if not mentioned, set to ""
 6. Be smart about context:
    - A line with 2-4 words that looks like a person's name IS the name
-   - A line with a city name (like دهوک، هەولێر، بغداد، أربيل، زاخو، سليمانية، موصل) is likely the address
-   - Common product words: تيشيرت، قميص، بنطلون، فستان، حذاء، كراس، پانتۆڵ، پێڵاو، کەمەر، جل، بلووز، shirt, t-shirt, pants, shoes, dress
-7. Understand Kurdish Badini greetings and words: سلاڤ، سڵاو، سلاو، ناڤ، رەنگ، سایز، مەقاس، جهـ، باژێر، موبایل، ژمارە، پارچە، دانە
-8. Understand size words in all languages:
-   - English: XS, S, M, L, XL, XXL, 2XL, 3XL
-   - Arabic: صغير، وسط، كبير
-   - Kurdish: بچووک، ناوەند، مەزن، گەورە
-9. Understand color words:
-   - Arabic: أبيض، أسود، أحمر، أزرق، أخضر، أصفر، بني، رمادي، وردي، برتقالي
-   - Kurdish Badini: سپی، ڕەش، سوور، شین، کەسک، زەرد، قاوەیی، بۆز، پەمبەیی، نارنجی
-   - English: white, black, red, blue, green, yellow, brown, gray, pink, orange
+   - A line with a city name (like دهوک، هەولێر، بغداد، أربيل، زاخو) or area (تاخێ ماسیکێ) is the address
+7. Understand Kurdish Badini greetings and words: سلاڤ، سڵاو، ناڤ، رەنگ، سایز، مەقاس، جهـ، باژێر، ژمارە، پارچە، دانە
 
-RESPOND WITH ONLY A VALID JSON OBJECT. No markdown, no backticks, no explanation. Just the JSON:
-{"customerName": "", "phone": "", "address": "", "product": "", "quantity": "", "size": "", "color": ""}`;
+You must respond with ONLY a valid JSON object. No markdown formatting, no backticks, no explanations. Just raw JSON text.`;
 
 /**
- * Sends the customer message to Google Gemini AI and gets extracted order data
+ * Sends the customer message to Groq AI and gets extracted order data
  * @param {string} messageText - The raw customer message
  * @returns {object|null} - Parsed order fields or null if AI fails
  */
 async function parseWithAI(messageText) {
-  const apiKey = process.env.GEMINI_API_KEY;
+  const apiKey = process.env.GROQ_API_KEY || process.env.GEMINI_API_KEY; // Fallback for env naming
 
-  if (!apiKey) {
-    console.log('⚠️ GEMINI_API_KEY not set. Skipping AI parsing.');
+  if (!apiKey || apiKey.startsWith('AQ.')) {
+    console.log('⚠️ GROQ_API_KEY not set or invalid. Skipping AI parsing.');
     return null;
   }
 
   try {
-    console.log('🤖 Sending message to Gemini AI for parsing...');
+    console.log('🤖 Sending message to Groq AI (Llama 3) for parsing...');
 
     const response = await axios.post(
-      `${GEMINI_API_URL}?key=${apiKey}`,
+      GROQ_API_URL,
       {
-        contents: [
-          {
-            role: 'user',
-            parts: [
-              { text: SYSTEM_PROMPT + '\n\nCustomer message:\n' + messageText }
-            ]
-          }
+        model: MODEL_NAME,
+        messages: [
+          { role: 'system', content: SYSTEM_PROMPT },
+          { role: 'user', content: messageText }
         ],
-        generationConfig: {
-          temperature: 0.1,   // Very low = very precise, no creativity
-          maxOutputTokens: 500
-        }
+        temperature: 0.1, // Very low = precise, no creativity
+        response_format: { type: "json_object" } // Forces pure JSON
       },
       {
-        headers: { 'Content-Type': 'application/json' },
-        timeout: 10000  // 10 second timeout — if AI is slow, we fall back
+        headers: { 
+          'Authorization': `Bearer ${apiKey}`,
+          'Content-Type': 'application/json' 
+        },
+        timeout: 10000  // 10 second timeout
       }
     );
 
     // Extract the AI's response text
-    const aiText = response.data?.candidates?.[0]?.content?.parts?.[0]?.text;
+    const aiText = response.data?.choices?.[0]?.message?.content;
 
     if (!aiText) {
-      console.warn('⚠️ Gemini returned empty response.');
+      console.warn('⚠️ Groq returned empty response.');
       return null;
     }
 
-    console.log(`🤖 Gemini raw response: ${aiText}`);
-
-    // Clean the response (remove markdown backticks if present)
-    const cleanedText = aiText
-      .replace(/```json\s*/gi, '')
-      .replace(/```\s*/g, '')
-      .trim();
+    console.log(`🤖 Groq raw response: ${aiText}`);
 
     // Parse JSON
-    const parsed = JSON.parse(cleanedText);
+    const parsed = JSON.parse(aiText.trim());
 
     // Validate the response has the expected structure
     const result = {
@@ -110,18 +93,20 @@ async function parseWithAI(messageText) {
       color: (parsed.color || '').trim(),
     };
 
-    console.log('✅ Gemini AI successfully extracted order data:', JSON.stringify(result));
+    console.log('✅ Groq AI successfully extracted order data:', JSON.stringify(result));
     return result;
 
   } catch (error) {
     if (error.code === 'ECONNABORTED' || error.message.includes('timeout')) {
-      console.warn('⏱️ Gemini AI timed out. Falling back to Regex parser.');
+      console.warn('⏱️ Groq AI timed out. Falling back to Regex parser.');
     } else if (error.response?.status === 429) {
-      console.warn('⚠️ Gemini rate limit hit. Falling back to Regex parser.');
+      console.warn('⚠️ Groq rate limit hit. Falling back to Regex parser.');
+    } else if (error.response?.status === 401) {
+      console.warn('⚠️ Groq API key invalid (401). Falling back to Regex parser.');
     } else if (error instanceof SyntaxError) {
-      console.warn('⚠️ Gemini returned invalid JSON. Falling back to Regex parser.');
+      console.warn('⚠️ Groq returned invalid JSON. Falling back to Regex parser.');
     } else {
-      console.warn(`⚠️ Gemini AI error: ${error.message}. Falling back to Regex parser.`);
+      console.warn(`⚠️ Groq AI error: ${error.message}. Falling back to Regex parser.`);
     }
     return null;
   }
