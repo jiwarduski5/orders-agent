@@ -2,42 +2,42 @@ require('dotenv').config();
 const { getAIResponse } = require('./aiParser');
 
 async function runTest() {
-  console.log("🧪 Testing Native AI Chatbot Flow...");
+  console.log("🧪 Testing Two-Phase Registration Flow...\n");
   
-  const history = [
-    { role: 'user', content: 'سلاڤ' }
-  ];
+  const history = [];
 
-  console.log(`\n👤 User: ${history[history.length - 1].content}`);
-  let response = await getAIResponse(history);
-  console.log(`🤖 AI: ${response.replyToCustomer}`);
-  console.log(`[isOrderComplete: ${response.isOrderComplete}]`);
-  
-  history.push({ role: 'assistant', content: response.replyToCustomer });
-  history.push({ role: 'user', content: 'zara t-shirt size M for me' });
-  
-  console.log(`\n👤 User: ${history[history.length - 1].content}`);
-  response = await getAIResponse(history);
-  console.log(`🤖 AI: ${response.replyToCustomer}`);
-  console.log(`[isOrderComplete: ${response.isOrderComplete}]`);
+  // 1. User says hi
+  console.log("═══ TEST 1: Greeting ═══");
+  history.push({ role: 'user', content: 'سلاڤ' });
+  console.log('👤 User: سلاڤ');
+  let r = await getAIResponse(history);
+  console.log(`🤖 AI: ${r.replyToCustomer}\n`);
+  history.push({ role: 'assistant', content: r.replyToCustomer });
 
-  history.push({ role: 'assistant', content: response.replyToCustomer });
-  history.push({ role: 'user', content: 'ناڤێ من جیوارە، ژ دهۆک مە، ژمارا من 07501234567' });
+  // 2. User chats generally
+  console.log("═══ TEST 2: General Chat ═══");
+  history.push({ role: 'user', content: 'ez dvet orderek bkem' });
+  console.log('👤 User: ez dvet orderek bkem');
+  r = await getAIResponse(history);
+  console.log(`🤖 AI: ${r.replyToCustomer}\n`);
+  history.push({ role: 'assistant', content: r.replyToCustomer });
 
-  console.log(`\n👤 User: ${history[history.length - 1].content}`);
-  response = await getAIResponse(history);
-  console.log(`🤖 AI: ${response.replyToCustomer}`);
-  console.log(`[isOrderComplete: ${response.isOrderComplete}]`);
+  // 3. User agrees to register
+  console.log("═══ TEST 3: User says Yes ═══");
+  history.push({ role: 'user', content: 'bale' });
+  console.log('👤 User: bale');
+  r = await getAIResponse(history);
+  console.log(`🤖 AI: ${r.replyToCustomer}\n`);
+  history.push({ role: 'assistant', content: r.replyToCustomer });
 
-  history.push({ role: 'assistant', content: response.replyToCustomer });
-  history.push({ role: 'user', content: 'بەلێ راستە' });
-
-  console.log(`\n👤 User: ${history[history.length - 1].content}`);
-  response = await getAIResponse(history);
-  console.log(`🤖 AI: ${response.replyToCustomer}`);
-  console.log(`[isOrderComplete: ${response.isOrderComplete}]`);
-
-  console.log('\n✅ Extracted Data:', response.extractedData);
+  // 4. User gives product
+  console.log("═══ TEST 4: User gives product ═══");
+  history.push({ role: 'user', content: 'nike shoes' });
+  console.log('👤 User: nike shoes');
+  r = await getAIResponse(history);
+  console.log(`🤖 AI: ${r.replyToCustomer}`);
+  console.log(`[Extracted Product: "${r.extractedData.product}"]\n`);
+  history.push({ role: 'assistant', content: r.replyToCustomer });
 }
 
-runTest();
+runTest().catch(console.error);
