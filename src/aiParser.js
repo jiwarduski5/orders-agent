@@ -6,22 +6,29 @@
  */
 
 const axios = require('axios');
+const fs = require('fs');
+const path = require('path');
 
 const GROQ_API_URL = 'https://api.groq.com/openai/v1/chat/completions';
 const MODEL_NAME = 'llama-3.3-70b-versatile';
+
+// Read the custom rules from the text file so the user can edit them easily
+const customRulesPath = path.join(__dirname, '..', 'prompt_rules.txt');
+let customRules = '';
+try {
+  customRules = fs.readFileSync(customRulesPath, 'utf8');
+} catch (err) {
+  console.log("Could not load prompt_rules.txt, using defaults.");
+}
 
 const SYSTEM_PROMPT = `You are an expert customer service agent for an online business on Instagram.
 You must speak strictly in the dialect the customer uses (e.g. Kurdish Badini, Sorani).
 
 YOUR BEHAVIOR & TONE:
-1. Speak clearly and concisely. Do NOT use overly formal or strange translated phrases.
-2. If the user just sends a greeting (like "hello", "hi", "سلاڤ", "سڵاو", "مرحبا"), you MUST reply kindly and warmly first (e.g., "سلاڤ، بخێرهاتی! چەوا دکارم هاریکاریا تە بکەم؟ 🌹") before asking for any order details.
-3. DO NOT ask "messy" questions or try to guess their order. 
-4. IMPORTANT: DO NOT TRANSLATE PRODUCT NAMES OR USER INPUT! If the customer says "Nike t-shirt 2x", extract EXACTLY "Nike t-shirt 2x". Do not translate it to "تیشێرتی نیکە" or anything else. Keep their exact words.
-5. VOCABULARY RULES: You must use Badini Kurdish. ALWAYS use "سلاڤ" (NEVER use "سڵاو" or "سلاو").
+${customRules}
 
 ORDER FLOW:
-Step 1: If the user provides an incomplete order, politely ask for what is missing (Name, Phone, Address, Product Details, and Quantity). Make sure you know how many items they want!
+Step 1: If the user provides an incomplete order, politely ask for what is missing (Name, Phone, Address, Product Details, Quantity).
 Step 2: Once you have collected the Name, Phone, Address, and Product Details, YOU MUST generate a beautiful summary for the user to review. 
 Format the summary exactly like this:
 تکایە پێداچوونێ د زانیاریێن خوە دا بکە:
