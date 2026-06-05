@@ -2,16 +2,9 @@
  * conversationManager.js
  *
  * Manages conversation state and message buffering for Instagram DMs.
- * Groups multiple messages from the same user into a single order.
- *
- * Flow:
- * 1. First message from a new user → Send greeting, start buffer
- * 2. Subsequent messages → Add to buffer, reset 1-minute timer
- * 3. After 1 minute of silence → Send to AI Brain → Process order
- *
- * AI Integration:
- * - Primary: Google Gemini AI (free) for perfect multilingual extraction
- * - Fallback: Regex-based parser if AI is unavailable
+ * INTERACTIVE CHATBOT VERSION:
+ * Actively asks the user for missing information (Name, Phone, Address, Product)
+ * before sending the order to Telegram.
  */
 
 const { parseWithAI } = require('./aiParser');
@@ -21,54 +14,33 @@ const { sendOrderNotification, sendRawMessageNotification } = require('./telegra
 const { sendInstagramReply } = require('./instagramReplyService');
 
 // ─── Configuration ────────────────────────────────────────────────────────────
-const BUFFER_TIMEOUT_MS = 1 * 60 * 1000; // 1 minute
+// Shorter timer because we are interacting with them! (15 seconds)
+const BUFFER_TIMEOUT_MS = 15 * 1000; 
 
-// ─── Messages (edit these to customize!) ──────────────────────────────────────
-
+// ─── Messages ────────────────────────────────────────────────────────────────
 const GREETING_MESSAGE =
   `تـو بخێرهاتـی بەرێز \n` +
-  `\n` +
-  `جهی دلخۆشا مەیە کو تە ئەم هەلبژارتین 🛍️\n` +
-  `\n` +
-  `ڤان پێزانینێن لخوارێ بومە ڤرێکە دا داخوازیا تە بهێتە وەرگرتن :\n` +
-  `📦ناڤێ بەرهەمی و هژمارا پارچان\n` +
-  `📐 رەنگ و سایز \n` +
-  `📱 ژمارا موبایلێ\n` +
-  `📍جهێ ئاکنجیبونێ\n` +
-  `👤 ناڤ \n` +
-  `\n` +
-  `😊`;
+  `جهی دلخۆشا مەیە کو تە ئەم هەلبژارتین 🛍️\n\n` +
+  `بۆ وەرگرتنی داواکاریەکەت، تکایە پێمان بڵێ چیت دەوێت؟ (زانیاری کاڵاکە) 📦`;
+
+const ASK_PRODUCT = `تکایە ناڤێ بەرهەمی و هژمارا پارچان بنێرە 📦`;
+const ASK_NAME = `زۆر سوپاس! تکایە ناڤێ خۆت بنێرە 👤`;
+const ASK_PHONE = `تکایە ژمارا موبایلێ بنێرە 📱`;
+const ASK_ADDRESS = `تکایە جهێ ئاکنجیبونێ (ناونیشان) بە تەواوی بنێرە 📍`;
 
 const ORDER_CONFIRMED_MESSAGE =
-  `داخازیا تە سەرکەفتیانە هاتە وەرگرتن  ✅🎉\n` +
-  `\n` +
-  `  سوپاس بو باوەریا تە!💖\n` +
-  `    لنێزیک دێ پەیوەندیێ بتە کەین 📞\n` +
-  `\n` +
-  `داخازیا بازارکرنەکا خۆش بوتە دخازین! 🛍️💫`;
-
-const MESSAGE_RECEIVED_MESSAGE =
-  `نامەکەت گەیشت! ✅\n` +
-  `\n` +
-  `بەزووترین کات پەیوەندیت پێوە دەکەین 🙏\n` +
-  `سوپاس بۆ پەیوەندیکردنت! 💫`;
+  `داخازیا تە سەرکەفتیانە هاتە وەرگرتن ✅🎉\n\n` +
+  `سوپاس بو باوەریا تە!💖\n` +
+  `لنێزیک دێ پەیوەندیێ بتە کەین 📞`;
 
 // ─── In-memory conversation store ─────────────────────────────────────────────
 const conversations = new Map();
 
-// Common greetings that should NOT be forwarded to Telegram if sent alone
 const GREETING_WORDS = [
   'hi', 'hello', 'hey', 'مرحبا', 'مرحبًا', 'اهلا', 'أهلا', 'هلا', 'السلام',
-  'السلام عليكم', 'سلام', 'هاي', 'الو', 'شلونكم', 'شلونك',
-  // Kurdish greetings
-  'سڵاو', 'سلاو', 'چۆنی', 'باشی', 'slaw', 'choni',
-  // Badini greetings
-  'سلاڤ', 'slav', 'چۆنیت', 'باشیت', 'تو چۆنی'
+  'سڵاو', 'سلاو', 'چۆنی', 'باشی', 'slaw', 'choni', 'سلاڤ', 'slav'
 ];
 
-/**
- * Checks if the combined text is just greetings (nothing useful to process)
- */
 function isJustGreeting(text) {
   const cleaned = text.trim().toLowerCase().replace(/[!?.,،؟\s]+/g, ' ').trim();
   return GREETING_WORDS.some(g => cleaned === g || cleaned === g + ' ');
@@ -76,141 +48,145 @@ function isJustGreeting(text) {
 
 /**
  * Handle a new incoming DM message.
- * Buffers the message and manages the conversation lifecycle.
  */
 function handleNewMessage(senderId, messageText, messageId) {
   let convo = conversations.get(senderId);
 
   if (!convo) {
-    // ── First message from this user → Send greeting ──
     convo = {
       messages: [],
       timer: null,
       greeted: false,
       messageIds: new Set(),
+      // Store the accumulated order details across multiple messages
+      orderData: {
+        customerName: '',
+        phone: '',
+        address: '',
+        product: '',
+        quantity: '1',
+        size: '',
+        color: ''
+      }
     };
     conversations.set(senderId, convo);
-
-    console.log(`👋 New conversation started with ${senderId}`);
-
-    // Send the greeting message
-    sendInstagramReply(senderId, GREETING_MESSAGE).catch(err => {
-      console.error(`❌ Failed to send greeting to ${senderId}:`, err.message);
-    });
+    console.log(`👋 New interactive conversation started with ${senderId}`);
+    
+    sendInstagramReply(senderId, GREETING_MESSAGE).catch(e => console.error(e));
     convo.greeted = true;
   }
 
-  // ── Deduplicate messages ──
-  if (convo.messageIds.has(messageId)) {
-    console.log(`ℹ️ Duplicate message ${messageId} from ${senderId}. Skipping.`);
-    return;
-  }
+  // Deduplicate
+  if (convo.messageIds.has(messageId)) return;
   convo.messageIds.add(messageId);
 
-  // ── Buffer the message ──
+  // Buffer message
   if (messageText && messageText.trim()) {
     convo.messages.push(messageText.trim());
-    console.log(`📝 Buffered message from ${senderId}: "${messageText.trim()}"`);
+    console.log(`📝 User ${senderId} says: "${messageText.trim()}"`);
   }
 
-  // ── Reset the 1-minute timer ──
-  if (convo.timer) {
-    clearTimeout(convo.timer);
-  }
-
+  // Reset the "typing" timer (15 seconds)
+  if (convo.timer) clearTimeout(convo.timer);
   convo.timer = setTimeout(() => {
-    processConversation(senderId);
+    processInteractiveConversation(senderId);
   }, BUFFER_TIMEOUT_MS);
 }
 
 /**
- * Called when the silence timer expires.
- * Combines all buffered messages and processes them as a single order.
- *
- * Uses AI (Gemini) as primary parser, falls back to Regex if AI fails.
+ * Processes the messages and decides whether to ask a question or finish the order.
  */
-async function processConversation(senderId) {
+async function processInteractiveConversation(senderId) {
   const convo = conversations.get(senderId);
-  if (!convo || convo.messages.length === 0) {
-    conversations.delete(senderId);
-    return;
-  }
+  if (!convo || convo.messages.length === 0) return;
 
-  // Combine all messages into one block
   const combinedText = convo.messages.join('\n');
-  const messageCount = convo.messages.length;
+  convo.messages = []; // Clear the buffer for the next round of messages
 
-  console.log(`⏰ Timer expired. Processing ${messageCount} message(s) from ${senderId}`);
-  console.log(`📄 Combined text:\n${combinedText}`);
-
-  // If the user only sent greetings, don't process
-  if (isJustGreeting(combinedText)) {
-    console.log(`ℹ️ Only greetings from ${senderId}. Waiting for order info.`);
-    conversations.delete(senderId);
+  if (isJustGreeting(combinedText) && !convo.orderData.product) {
+    // If they just said "hi" and we already greeted them, do nothing
     return;
   }
 
-  const now = new Date();
+  console.log(`🧠 Analyzing message block from ${senderId}...`);
 
-  // ── Step 1: Try AI Parser (Primary Brain) ──
-  let order = null;
+  // 1. Parse the new text
+  let newExtractedData = null;
   let usedAI = false;
 
   const aiResult = await parseWithAI(combinedText);
-
   if (aiResult) {
-    // AI succeeded! Build the order object from AI results
     usedAI = true;
-    order = {
-      isOrder: true,
-      customer: `user_${senderId}`,
-      customerName: aiResult.customerName,
-      phone: aiResult.phone,
-      address: aiResult.address,
-      rawMessage: combinedText,
-      quantity: aiResult.quantity || '1',
-      size: aiResult.size || 'غير محدد',
-      color: aiResult.color,
-      product: aiResult.product || 'يرجى المراجعة',
-      source: 'DM',
-      date: now.toLocaleDateString('ar-IQ', { year: 'numeric', month: '2-digit', day: '2-digit' }),
-      time: now.toLocaleTimeString('ar-IQ', { hour: '2-digit', minute: '2-digit' }),
-      status: '🟡 New',
-    };
-    console.log('🤖 Using AI-parsed order data.');
+    newExtractedData = aiResult;
   } else {
-    // ── Step 2: Fallback to Regex Parser (Safety Net) ──
-    console.log('🔧 AI unavailable. Using Regex fallback parser.');
-    order = parseOrder(combinedText, `user_${senderId}`, 'DM');
+    newExtractedData = parseOrder(combinedText, `user_${senderId}`, 'DM');
   }
+
+  // 2. Merge newly found data into the conversation state
+  const d = convo.orderData;
+  const n = newExtractedData;
+
+  // We only overwrite if the new data is not empty and not the default fallback text
+  if (n.customerName && n.customerName !== '—') d.customerName = n.customerName;
+  if (n.phone && n.phone !== '—') d.phone = n.phone;
+  if (n.address && n.address !== '—') d.address = n.address;
+  if (n.product && n.product !== 'يرجى المراجعة') d.product = n.product;
+  if (n.size && n.size !== 'غير محدد') d.size = n.size;
+  if (n.color && n.color !== '—') d.color = n.color;
+  if (n.quantity && n.quantity !== '1') d.quantity = n.quantity;
+
+  // 3. Decide what to do next (Interactive Chatbot Logic)
+  // We check what is missing, and ask for it.
+  
+  if (!d.product) {
+    await sendInstagramReply(senderId, ASK_PRODUCT);
+    return; // Stop here and wait for their reply
+  }
+  
+  if (!d.customerName) {
+    await sendInstagramReply(senderId, ASK_NAME);
+    return; 
+  }
+  
+  if (!d.phone) {
+    await sendInstagramReply(senderId, ASK_PHONE);
+    return;
+  }
+  
+  if (!d.address) {
+    await sendInstagramReply(senderId, ASK_ADDRESS);
+    return;
+  }
+
+  // 4. If we reach this point, ALL required fields are collected!
+  console.log(`✅ All details collected from ${senderId}! Finalizing order...`);
+  
+  const now = new Date();
+  const finalOrder = {
+    isOrder: true,
+    customer: `user_${senderId}`,
+    customerName: d.customerName,
+    phone: d.phone,
+    address: d.address,
+    product: d.product,
+    quantity: d.quantity,
+    size: d.size || 'غير محدد',
+    color: d.color || '—',
+    rawMessage: 'Interactive Session Completed',
+    source: 'DM',
+    date: now.toLocaleDateString('ar-IQ', { year: 'numeric', month: '2-digit', day: '2-digit' }),
+    time: now.toLocaleTimeString('ar-IQ', { hour: '2-digit', minute: '2-digit' }),
+    status: '🟡 جديد'
+  };
 
   try {
-    // Check if we extracted useful order data
-    const hasUsefulData = order.phone || order.address || order.customerName || order.isOrder;
-
-    if (hasUsefulData) {
-      // ── Success path: Save + Notify + Confirm ──
-      const orderNumber = await appendOrder(order);
-      await sendOrderNotification(order, orderNumber, usedAI);
-      await sendInstagramReply(senderId, ORDER_CONFIRMED_MESSAGE);
-      console.log(`✅ Order #${orderNumber} from ${senderId} fully processed. (${usedAI ? '🤖 AI' : '🔧 Regex'})`);
-    } else {
-      // ── Fallback path: Forward raw message to Telegram ──
-      await sendRawMessageNotification(senderId, combinedText);
-      await sendInstagramReply(senderId, MESSAGE_RECEIVED_MESSAGE);
-      console.log(`📤 Raw message from ${senderId} forwarded to Telegram.`);
-    }
-  } catch (error) {
-    console.error(`❌ Error processing conversation from ${senderId}:`, error.message);
-    try {
-      await sendRawMessageNotification(senderId, combinedText);
-    } catch (e) {
-      console.error(`❌ Even raw Telegram forward failed:`, e.message);
-    }
+    const orderNumber = await appendOrder(finalOrder);
+    await sendOrderNotification(finalOrder, orderNumber, usedAI);
+    await sendInstagramReply(senderId, ORDER_CONFIRMED_MESSAGE);
+    conversations.delete(senderId); // End the conversation successfully
+  } catch (err) {
+    console.error(`❌ Failed to finalize order for ${senderId}:`, err);
   }
-
-  // Clean up the conversation
-  conversations.delete(senderId);
 }
 
 module.exports = { handleNewMessage };
