@@ -16,8 +16,8 @@ async function runTest() {
 
   // 2. User chats generally
   console.log("═══ TEST 2: General Chat ═══");
-  history.push({ role: 'user', content: 'mn dvet orderek bkem' });
-  console.log('👤 User: mn dvet orderek bkem');
+  history.push({ role: 'user', content: 'ez dvet orderek bkem' });
+  console.log('👤 User: ez dvet orderek bkem');
   r = await getAIResponse(history);
   console.log(`🤖 AI: ${r.replyToCustomer}\n`);
   history.push({ role: 'assistant', content: r.replyToCustomer });

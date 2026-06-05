@@ -60,18 +60,62 @@ async function handleNewMessage(senderId, messageText, messageId) {
 
   } else {
     // ─── REGEX FALLBACK (If Groq is down) ────────────────────────────────
-    console.warn(`⚠️ AI failed to respond. Using Regex fallback.`);
+    console.warn(`⚠️ AI failed to respond. Using Step-by-Step Regex fallback.`);
+    const { PHRASES, QUESTIONS } = require('./aiParser');
     const allUserText = convo.history.filter(m => m.role === 'user').map(m => m.content).join('\n');
     const regexData = parseOrder(allUserText, `user_${senderId}`, 'DM');
 
-    if (regexData.customerName && regexData.phone && regexData.address && regexData.product !== 'يرجى المراجعة') {
-      await sendInstagramReply(senderId, `داخازیا تە سەرکەفتیانە هاتە وەرگرتن ✅`);
-      await finalizeOrder(senderId, regexData, false);
-    } else {
-      const fb = `سلاڤ، تکایە زانیاریێن خوە (ناڤ، ژمارا موبایلێ، ناونیشان و داخازیا خوە) بنێرە دا کو داخازیا تە وەرگرین. 📦`;
-      await sendInstagramReply(senderId, fb);
-      convo.history.push({ role: 'assistant', content: fb });
+    // Simple intent check for fallback
+    const intentPhrases = ['orderek', 'order dvet', 'tiştek', 'tişt dixwazim', 'bixrim', 'ez dixwazim'];
+    let fallbackProduct = regexData.product;
+    if (intentPhrases.some(p => fallbackProduct.toLowerCase().includes(p))) {
+      fallbackProduct = 'يرجى المراجعة';
     }
+
+    let fb = '';
+    // If we haven't officially "started" the order
+    if (!convo.fallbackStarted) {
+      const lowerLast = cleanText.toLowerCase();
+      if (lowerLast === 'bale' || lowerLast === 'بەلێ' || lowerLast === 'باشە') {
+        convo.fallbackStarted = true;
+        fb = QUESTIONS.askProduct;
+      } else {
+        // Assume anything else before start is just chat, ask them if they want to order
+        fb = PHRASES.askToStart;
+      }
+    } else {
+      // Step-by-Step Questioning
+      if (fallbackProduct === 'يرجى المراجعة') {
+        fb = QUESTIONS.askProduct;
+      } else if (!regexData.customerName) {
+        fb = QUESTIONS.askName;
+      } else if (!regexData.phone) {
+        fb = QUESTIONS.askPhone;
+      } else if (!regexData.address) {
+        fb = QUESTIONS.askAddress;
+      } else if (!regexData.quantity || regexData.quantity === '1') { // Fallback parser defaults to 1, ask anyway to be safe
+        fb = QUESTIONS.askQty;
+        // force quantity check on next turn by removing it temporarily
+        if (cleanText.match(/\d+/)) regexData.quantity = cleanText.match(/\d+/)[0]; 
+      } else if (!regexData.color || regexData.color === '—' || regexData.color === '') {
+        fb = QUESTIONS.askColor;
+        // Update color manually if they just typed it
+        if (!['بەلێ', 'نەخێر', 'bale'].includes(cleanText)) regexData.color = cleanText;
+      } else {
+        // Show summary if everything is collected
+        const lowerLast = cleanText.toLowerCase();
+        if (lowerLast === 'bale' || lowerLast === 'بەلێ' || lowerLast === 'yes') {
+          await sendInstagramReply(senderId, PHRASES.orderDone);
+          await finalizeOrder(senderId, regexData, false);
+          return; // Done
+        } else {
+          fb = `تکایە پێداچوونێ د زانیاریێن خوە دا بکە:\n📦 کاڵا: ${fallbackProduct}\n🔢 دانە: ${regexData.quantity}\n🎨 ڕەنگ: ${regexData.color}\n👤 ناڤ: ${regexData.customerName}\n📱 موبایل: ${regexData.phone}\n📍 ناونیشان: ${regexData.address}\n${PHRASES.confirmPrompt}`;
+        }
+      }
+    }
+
+    await sendInstagramReply(senderId, fb);
+    convo.history.push({ role: 'assistant', content: fb });
   }
 }
 

@@ -12,7 +12,8 @@ const fs    = require('fs');
 const path  = require('path');
 
 const GROQ_API_URL = 'https://api.groq.com/openai/v1/chat/completions';
-const MODEL_NAME   = 'llama-3.3-70b-versatile';
+const PRIMARY_MODEL = 'llama-3.3-70b-versatile';
+const FALLBACK_MODEL = 'llama-3.1-8b-instant'; // Used if primary hits rate limit
 
 // ─── HARDCODED BADINI PHRASES ─────────────────────────────────────────────────
 const PHRASES = {
@@ -28,7 +29,7 @@ const QUESTIONS = {
   askPhone:    'ژمارا موبایلا تە چییە؟',
   askAddress:  'ناڤونیشانێت تە چییە؟',
   askQty:      'تە چەند پارچە دڤێن ژڤی بەرهەمی؟',
-  askSize:     'قەبارەیێ (size) تە چییە؟',
+  askSize:     'قەبارەکێ (size) تە چییە؟',
   askColor:    'ڕەنگێ بەرهەمێ تە چییە؟',
 };
 
@@ -64,7 +65,7 @@ You must track "isRegistrationStarted".
   - Address: "${QUESTIONS.askAddress}"
   - Quantity: "${QUESTIONS.askQty}"
   - Size (if clothing/shoes): "${QUESTIONS.askSize}"
-  - Color (if clothing/shoes): "${QUESTIONS.askColor}"
+  - Color: "${QUESTIONS.askColor}"
 - Ask ONE question at a time.
 - NEVER translate product names. Keep them exactly as the customer typed.
 
@@ -77,9 +78,9 @@ When order confirmed           → use EXACTLY: "${PHRASES.orderDone}"
 ${customRules}
 
 ═══ SUMMARY FORMAT (use exactly) ═══
-هیڤیدارین پێداچوونێ د زانیاریێن خوە دا بکەی:
-📦 بەرهەم: [exact product as customer wrote it]
-🔢 پارچە: [quantity]
+تکایە پێداچوونێ د زانیاریێن خوە دا بکە:
+📦 کاڵا: [exact product as customer wrote it]
+🔢 دانە: [quantity]
 📐 قەبارە: [size — only if product needs it]
 🎨 ڕەنگ: [color — only if product needs it]
 👤 ناڤ: [name]
@@ -117,27 +118,59 @@ async function getAIResponse(messages) {
   }
 
   try {
-    const response = await axios.post(
-      GROQ_API_URL,
-      {
-        model: MODEL_NAME,
-        messages: [
-          { role: 'system', content: SYSTEM_PROMPT },
-          ...messages
-        ],
-        temperature: 0.1,
-        response_format: { type: 'json_object' }
-      },
-      {
-        headers: {
-          'Authorization': `Bearer ${apiKey}`,
-          'Content-Type': 'application/json'
-        },
-        timeout: 12000
-      }
-    );
+    let aiText = null;
 
-    const aiText = response.data?.choices?.[0]?.message?.content;
+    // Try primary model first
+    try {
+      const response = await axios.post(
+        GROQ_API_URL,
+        {
+          model: PRIMARY_MODEL,
+          messages: [
+            { role: 'system', content: SYSTEM_PROMPT },
+            ...messages
+          ],
+          temperature: 0.1,
+          response_format: { type: 'json_object' }
+        },
+        {
+          headers: {
+            'Authorization': `Bearer ${apiKey}`,
+            'Content-Type': 'application/json'
+          },
+          timeout: 12000
+        }
+      );
+      aiText = response.data?.choices?.[0]?.message?.content;
+    } catch (err) {
+      if (err.response && err.response.status === 429) {
+        console.warn('⚠️ Primary model rate limited! Switching to fallback model...');
+        // Try fallback model
+        const fallbackResponse = await axios.post(
+          GROQ_API_URL,
+          {
+            model: FALLBACK_MODEL,
+            messages: [
+              { role: 'system', content: SYSTEM_PROMPT },
+              ...messages
+            ],
+            temperature: 0.1,
+            response_format: { type: 'json_object' }
+          },
+          {
+            headers: {
+              'Authorization': `Bearer ${apiKey}`,
+              'Content-Type': 'application/json'
+            },
+            timeout: 12000
+          }
+        );
+        aiText = fallbackResponse.data?.choices?.[0]?.message?.content;
+      } else {
+        throw err; // Re-throw if it's not a rate limit error
+      }
+    }
+
     if (!aiText) return null;
 
     console.log(`🤖 AI Raw JSON:\n${aiText}`);
