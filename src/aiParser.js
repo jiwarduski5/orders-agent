@@ -13,7 +13,7 @@ const axios = require('axios');
 
 // ─── Groq API Configuration ───────────────────────────────────────────────────
 const GROQ_API_URL = 'https://api.groq.com/openai/v1/chat/completions';
-const MODEL_NAME = 'llama3-70b-8192'; // The smartest, fastest free model
+const MODEL_NAME = 'llama-3.3-70b-versatile'; // The smartest, fastest free model
 
 // ─── The AI Prompt (this is the "brain") ──────────────────────────────────────
 const SYSTEM_PROMPT = `You are an expert multilingual order extraction assistant for an online store. You understand Arabic, Kurdish (both Badini/Kurmanji and Sorani dialects), and English.
