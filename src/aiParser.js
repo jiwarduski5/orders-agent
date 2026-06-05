@@ -28,7 +28,7 @@ const QUESTIONS = {
   askPhone:    'ژمارا موبایلا تە چییە؟',
   askAddress:  'ناڤونیشانێت تە چییە؟',
   askQty:      'تە چەند پارچە دڤێن ژڤی بەرهەمی؟',
-  askSize:     'قەبارەکێ (size) تە چییە؟',
+  askSize:     'قەبارەیێ (size) تە چییە؟',
   askColor:    'ڕەنگێ بەرهەمێ تە چییە؟',
 };
 
@@ -77,9 +77,9 @@ When order confirmed           → use EXACTLY: "${PHRASES.orderDone}"
 ${customRules}
 
 ═══ SUMMARY FORMAT (use exactly) ═══
-تکایە پێداچوونێ د زانیاریێن خوە دا بکە:
-📦 کاڵا: [exact product as customer wrote it]
-🔢 دانە: [quantity]
+هیڤیدارین پێداچوونێ د زانیاریێن خوە دا بکەی:
+📦 بەرهەم: [exact product as customer wrote it]
+🔢 پارچە: [quantity]
 📐 قەبارە: [size — only if product needs it]
 🎨 ڕەنگ: [color — only if product needs it]
 👤 ناڤ: [name]
