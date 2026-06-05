@@ -1,115 +1,116 @@
 /**
  * aiParser.js
  *
- * AI-powered order parser using Groq API (FREE Llama 3 70B model).
- * Sends the customer's raw message to Groq and gets back
- * perfectly extracted order fields in JSON.
- *
- * This is the PRIMARY brain. If Groq fails, the system
- * falls back to the Regex-based parser (orderParser.js).
+ * Native AI Chatbot Agent using Groq API (llama-3.3-70b-versatile).
+ * This completely controls the conversation.
  */
 
 const axios = require('axios');
 
-// ─── Groq API Configuration ───────────────────────────────────────────────────
 const GROQ_API_URL = 'https://api.groq.com/openai/v1/chat/completions';
-const MODEL_NAME = 'llama-3.3-70b-versatile'; // The smartest, fastest free model
+const MODEL_NAME = 'llama-3.3-70b-versatile';
 
-// ─── The AI Prompt (this is the "brain") ──────────────────────────────────────
-const SYSTEM_PROMPT = `You are an expert multilingual order extraction assistant for an online store. You understand Arabic, Kurdish (both Badini/Kurmanji and Sorani dialects), and English.
+const SYSTEM_PROMPT = `You are a highly intelligent, polite customer service agent for an online business on Instagram.
+You MUST speak in the exact language and dialect the customer uses. If they use Kurdish Badini, reply in Badini. If Arabic, reply in Arabic.
 
-Your job is to read a customer's Instagram DM message and extract all order details into JSON format.
+Your ultimate goal is to collect all necessary order details:
+1. Customer Name
+2. Phone Number
+3. Delivery Address (City/Neighborhood)
+4. Product Details (What they want to buy, and the Quantity)
+5. Product Specifications: ONLY ask for Size/Color if the product logically requires it (e.g. ask for shirts/shoes, but DO NOT ask for phones/perfumes/electronics).
 
-RULES:
-1. Extract these exact fields: "customerName", "phone", "address", "product", "quantity", "size", "color"
-2. If a field is not mentioned, set it to an empty string ""
-3. For phone numbers: normalize Arabic digits (٠١٢٣٤٥٦٧٨٩) to English digits (0123456789). Remove spaces and dashes.
-4. For quantity: if not explicitly mentioned, default to "1"
-5. For size: if not mentioned, set to ""
-6. Be smart about context:
-   - A line with 2-4 words that looks like a person's name IS the name
-   - A line with a city name (like دهوک، هەولێر، بغداد، أربيل، زاخو) or area (تاخێ ماسیکێ) is the address
-7. Understand Kurdish Badini greetings and words: سلاڤ، سڵاو، ناڤ، رەنگ، سایز، مەقاس، جهـ، باژێر، ژمارە، پارچە، دانە
+CONVERSATION RULES:
+- Be very brief and natural. Do not sound like a robot.
+- If they just say "hi" or "سلاڤ", greet them warmly and ask how you can help.
+- Ask for missing information one step at a time. Do not overwhelm them with a big list of questions.
+- If they provide everything in one message, you can complete the order immediately.
+- VOCABULARY: When asking for address, use "ناونیشان" or "جهێ ئاکنجیبونێ". Never use words for hospital. When asking for name, use "ناڤێ تە چییە؟".
 
-You must respond with ONLY a valid JSON object. No markdown formatting, no backticks, no explanations. Just raw JSON text.`;
+DATA EXTRACTION RULES:
+- Phone numbers: Convert Arabic digits (٠١٢٣٤٥٦٧٨٩) to English digits (0123456789).
+- Quantity: Default to "1" if not specified.
+- Once you are 100% confident you have gathered Name, Phone, Address, and Product Details, set "isOrderComplete" to true.
+- When "isOrderComplete" is true, your "replyToCustomer" should be a final confirmation/thank you message.
+
+CRITICAL INSTRUCTION:
+You MUST ALWAYS respond with ONLY a pure JSON object. No markdown formatting, no backticks, no explanations. 
+Your response must perfectly match this schema:
+{
+  "replyToCustomer": "Your reply in the user's language goes here...",
+  "isOrderComplete": false,
+  "extractedData": {
+    "customerName": "",
+    "phone": "",
+    "address": "",
+    "product": "",
+    "quantity": "",
+    "size": "",
+    "color": ""
+  }
+}`;
 
 /**
- * Sends the customer message to Groq AI and gets extracted order data
- * @param {string} messageText - The raw customer message
- * @returns {object|null} - Parsed order fields or null if AI fails
+ * Sends the full conversation history to Groq AI.
+ * @param {Array} messages - Array of {role: 'user'|'assistant', content: string}
+ * @returns {object|null} - The JSON Router response
  */
-async function parseWithAI(messageText) {
-  const apiKey = process.env.GROQ_API_KEY || process.env.GEMINI_API_KEY; // Fallback for env naming
+async function getAIResponse(messages) {
+  const apiKey = process.env.GROQ_API_KEY || process.env.GEMINI_API_KEY;
 
-  if (!apiKey || apiKey.startsWith('AQ.')) {
-    console.log('⚠️ GROQ_API_KEY not set or invalid. Skipping AI parsing.');
+  if (!apiKey || !apiKey.startsWith('gsk_')) {
+    console.warn('⚠️ GROQ_API_KEY is invalid or missing.');
     return null;
   }
 
-  try {
-    console.log('🤖 Sending message to Groq AI (Llama 3) for parsing...');
+  // Build the message array for the API
+  const apiMessages = [
+    { role: 'system', content: SYSTEM_PROMPT },
+    ...messages
+  ];
 
+  try {
     const response = await axios.post(
       GROQ_API_URL,
       {
         model: MODEL_NAME,
-        messages: [
-          { role: 'system', content: SYSTEM_PROMPT },
-          { role: 'user', content: messageText }
-        ],
-        temperature: 0.1, // Very low = precise, no creativity
-        response_format: { type: "json_object" } // Forces pure JSON
+        messages: apiMessages,
+        temperature: 0.2, // Slightly higher for natural conversation, but low enough for JSON stability
+        response_format: { type: "json_object" }
       },
       {
         headers: { 
           'Authorization': `Bearer ${apiKey}`,
           'Content-Type': 'application/json' 
         },
-        timeout: 10000  // 10 second timeout
+        timeout: 10000 
       }
     );
 
-    // Extract the AI's response text
     const aiText = response.data?.choices?.[0]?.message?.content;
+    if (!aiText) return null;
 
-    if (!aiText) {
-      console.warn('⚠️ Groq returned empty response.');
-      return null;
-    }
+    console.log(`🤖 AI Raw JSON Reply: ${aiText}`);
 
-    console.log(`🤖 Groq raw response: ${aiText}`);
-
-    // Parse JSON
     const parsed = JSON.parse(aiText.trim());
-
-    // Validate the response has the expected structure
-    const result = {
-      customerName: (parsed.customerName || '').trim(),
-      phone: (parsed.phone || '').trim(),
-      address: (parsed.address || '').trim(),
-      product: (parsed.product || '').trim(),
-      quantity: (parsed.quantity || '1').toString().trim(),
-      size: (parsed.size || '').trim(),
-      color: (parsed.color || '').trim(),
+    return {
+      replyToCustomer: parsed.replyToCustomer || 'سلاڤ، فەرموو چەوا دکارم هاریکاریا تە بکەم؟',
+      isOrderComplete: !!parsed.isOrderComplete,
+      extractedData: {
+        customerName: (parsed.extractedData?.customerName || '').trim(),
+        phone: (parsed.extractedData?.phone || '').trim(),
+        address: (parsed.extractedData?.address || '').trim(),
+        product: (parsed.extractedData?.product || '').trim(),
+        quantity: (parsed.extractedData?.quantity || '1').toString().trim(),
+        size: (parsed.extractedData?.size || '').trim(),
+        color: (parsed.extractedData?.color || '').trim(),
+      }
     };
 
-    console.log('✅ Groq AI successfully extracted order data:', JSON.stringify(result));
-    return result;
-
   } catch (error) {
-    if (error.code === 'ECONNABORTED' || error.message.includes('timeout')) {
-      console.warn('⏱️ Groq AI timed out. Falling back to Regex parser.');
-    } else if (error.response?.status === 429) {
-      console.warn('⚠️ Groq rate limit hit. Falling back to Regex parser.');
-    } else if (error.response?.status === 401) {
-      console.warn('⚠️ Groq API key invalid (401). Falling back to Regex parser.');
-    } else if (error instanceof SyntaxError) {
-      console.warn('⚠️ Groq returned invalid JSON. Falling back to Regex parser.');
-    } else {
-      console.warn(`⚠️ Groq AI error: ${error.message}. Falling back to Regex parser.`);
-    }
+    console.error(`⚠️ Groq AI error: ${error.response?.data ? JSON.stringify(error.response.data) : error.message}`);
     return null;
   }
 }
 
-module.exports = { parseWithAI };
+module.exports = { getAIResponse };
