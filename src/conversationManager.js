@@ -43,6 +43,10 @@ async function handleNewMessage(senderId, messageText, messageId) {
 
   if (aiResult) {
     console.log(`🤖 AI Reply: "${aiResult.replyToCustomer}"`);
+
+    // Small natural delay so it feels like a human is typing
+    await new Promise(resolve => setTimeout(resolve, 1500));
+
     await sendInstagramReply(senderId, aiResult.replyToCustomer);
     
     // Check if the AI decided the user CONFIRMED the final summary
