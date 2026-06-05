@@ -5,36 +5,47 @@
  * Supports two modes:
  * 1. Formatted order notification (when parsing succeeds)
  * 2. Raw message forwarding (when parsing fails — fallback)
+ *
+ * Ultra-clear layout designed for instant readability.
  */
 
 const axios = require('axios');
 
 /**
- * Formats the order details into a readable Telegram message (HTML)
+ * Formats the order details into a beautiful, ultra-clear Telegram message (HTML)
  */
-function formatTelegramMessage(order, orderNumber) {
-  const phoneLine = `\n📱 Phone: ${order.phone || '—'}`;
-  const addressLine = `\n📍 Address: ${order.address || '—'}`;
-  const nameLine = `\n👤 Name: ${order.customerName || '—'}`;
-  const colorLine = `\n🎨 Color: ${order.color || '—'}`;
+function formatTelegramMessage(order, orderNumber, usedAI = false) {
+  const brain = usedAI ? '🤖 AI' : '🔧 Regex';
+  const missing = (val) => val && val !== '—' && val !== 'غير محدد' && val !== 'يرجى المراجعة' ? val : '⚠️ MISSING';
 
   return (
-    `🛒 <b>داخوازیەکا نوی #${orderNumber}</b>\n` +
+    `━━━━━━━━━━━━━━━━━━━━━━\n` +
+    `🛒 <b>NEW ORDER #${orderNumber}</b>\n` +
+    `━━━━━━━━━━━━━━━━━━━━━━\n` +
     `\n` +
-    `🔗 User: @${order.customer}` +`🔗 Name: @${order.customerName}` +
-    nameLine +
-    phoneLine +
-    addressLine +
-    `\n\n` +
-    `📅 Date: ${order.date} - ${order.time}\n` +
+    `👤 <b>Name:</b>  ${missing(order.customerName)}\n` +
+    `📱 <b>Phone:</b>  ${missing(order.phone)}\n` +
+    `📍 <b>Address:</b>  ${missing(order.address)}\n` +
+    `🔗 <b>IG User:</b>  @${order.customer}\n` +
     `\n` +
-    `🔢 Qty: ${order.quantity}\n` +
-    `📐 Size: ${order.size}` +
-    colorLine +
-    `\n\n` +
-    `💬 Full Message:\n"${order.rawMessage}"\n` +
+    `───── Order Details ─────\n` +
     `\n` +
-    `📌 Status: ${order.status}`
+    `📦 <b>Product:</b>  ${missing(order.product)}\n` +
+    `🔢 <b>Qty:</b>  ${order.quantity || '1'}\n` +
+    `📐 <b>Size:</b>  ${missing(order.size)}\n` +
+    `🎨 <b>Color:</b>  ${missing(order.color)}\n` +
+    `\n` +
+    `───── Info ─────\n` +
+    `\n` +
+    `📅 <b>Date:</b>  ${order.date} - ${order.time}\n` +
+    `🧠 <b>Parsed by:</b>  ${brain}\n` +
+    `📌 <b>Status:</b>  ${order.status}\n` +
+    `\n` +
+    `───── Full Message ─────\n` +
+    `\n` +
+    `💬 "${order.rawMessage}"\n` +
+    `\n` +
+    `━━━━━━━━━━━━━━━━━━━━━━`
   );
 }
 
@@ -43,14 +54,19 @@ function formatTelegramMessage(order, orderNumber) {
  */
 function formatRawMessage(senderId, rawText) {
   return (
-    `📩 <b> نامەکا نوی</b>\n` +
+    `━━━━━━━━━━━━━━━━━━━━━━\n` +
+    `📩 <b>NEW MESSAGE</b>\n` +
+    `━━━━━━━━━━━━━━━━━━━━━━\n` +
     `\n` +
-    `🔗 From: user_${senderId}\n` +
-    `📅 Date: ${new Date().toLocaleString('ar-IQ')}\n` +
+    `🔗 <b>From:</b>  user_${senderId}\n` +
+    `📅 <b>Date:</b>  ${new Date().toLocaleString('ar-IQ')}\n` +
     `\n` +
-    `💬 Message:\n"${rawText}"\n` +
+    `───── Message ─────\n` +
     `\n` +
-    `⚠️ Could not auto-detect order details`
+    `💬 "${rawText}"\n` +
+    `\n` +
+    `⚠️ <b>Could not auto-detect order details</b>\n` +
+    `━━━━━━━━━━━━━━━━━━━━━━`
   );
 }
 
@@ -86,8 +102,8 @@ async function sendTelegram(text) {
 /**
  * Sends a formatted order notification to Telegram
  */
-async function sendOrderNotification(order, orderNumber) {
-  const message = formatTelegramMessage(order, orderNumber);
+async function sendOrderNotification(order, orderNumber, usedAI = false) {
+  const message = formatTelegramMessage(order, orderNumber, usedAI);
   await sendTelegram(message);
   console.log(`✅ Telegram notification sent for order #${orderNumber}.`);
 }

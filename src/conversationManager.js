@@ -6,17 +6,22 @@
  *
  * Flow:
  * 1. First message from a new user → Send greeting, start buffer
- * 2. Subsequent messages → Add to buffer, reset 2-minute timer
- * 3. After 2 minutes of silence → Process all buffered messages as ONE order
+ * 2. Subsequent messages → Add to buffer, reset 1-minute timer
+ * 3. After 1 minute of silence → Send to AI Brain → Process order
+ *
+ * AI Integration:
+ * - Primary: Google Gemini AI (free) for perfect multilingual extraction
+ * - Fallback: Regex-based parser if AI is unavailable
  */
 
+const { parseWithAI } = require('./aiParser');
 const { parseOrder } = require('./orderParser');
 const { appendOrder } = require('./sheetsService');
 const { sendOrderNotification, sendRawMessageNotification } = require('./telegramService');
 const { sendInstagramReply } = require('./instagramReplyService');
 
 // ─── Configuration ────────────────────────────────────────────────────────────
-const BUFFER_TIMEOUT_MS = 1.5 * 60 * 1000; // 1.5 minutes
+const BUFFER_TIMEOUT_MS = 1 * 60 * 1000; // 1 minute
 
 // ─── Messages (edit these to customize!) ──────────────────────────────────────
 
@@ -43,13 +48,12 @@ const ORDER_CONFIRMED_MESSAGE =
   `داخازیا بازارکرنەکا خۆش بوتە دخازین! 🛍️💫`;
 
 const MESSAGE_RECEIVED_MESSAGE =
-  ` ناماتە گە‌هشت ! ✅\n` +
+  `نامەکەت گەیشت! ✅\n` +
   `\n` +
-  `    بزویترین دەم دە پەیوەندیێ بو تە کەین 🙏\n` +
-  `سوپاس بۆ دەمی تە بەریز! 💫`;
+  `بەزووترین کات پەیوەندیت پێوە دەکەین 🙏\n` +
+  `سوپاس بۆ پەیوەندیکردنت! 💫`;
 
 // ─── In-memory conversation store ─────────────────────────────────────────────
-// Map<senderId, { messages: string[], timer: NodeJS.Timeout, greeted: boolean, messageIds: Set }>
 const conversations = new Map();
 
 // Common greetings that should NOT be forwarded to Telegram if sent alone
@@ -57,7 +61,9 @@ const GREETING_WORDS = [
   'hi', 'hello', 'hey', 'مرحبا', 'مرحبًا', 'اهلا', 'أهلا', 'هلا', 'السلام',
   'السلام عليكم', 'سلام', 'هاي', 'الو', 'شلونكم', 'شلونك',
   // Kurdish greetings
-  'سڵاو', 'سلاو', 'چۆنی', 'باشی', 'slaw', 'choni'
+  'سڵاو', 'سلاو', 'چۆنی', 'باشی', 'slaw', 'choni',
+  // Badini greetings
+  'سلاڤ', 'slav', 'چۆنیت', 'باشیت', 'تو چۆنی'
 ];
 
 /**
@@ -71,10 +77,6 @@ function isJustGreeting(text) {
 /**
  * Handle a new incoming DM message.
  * Buffers the message and manages the conversation lifecycle.
- *
- * @param {string} senderId - Instagram-scoped user ID
- * @param {string} messageText - The text content of the message
- * @param {string} messageId - Unique message ID for deduplication
  */
 function handleNewMessage(senderId, messageText, messageId) {
   let convo = conversations.get(senderId);
@@ -111,7 +113,7 @@ function handleNewMessage(senderId, messageText, messageId) {
     console.log(`📝 Buffered message from ${senderId}: "${messageText.trim()}"`);
   }
 
-  // ── Reset the 2-minute timer ──
+  // ── Reset the 1-minute timer ──
   if (convo.timer) {
     clearTimeout(convo.timer);
   }
@@ -124,6 +126,8 @@ function handleNewMessage(senderId, messageText, messageId) {
 /**
  * Called when the silence timer expires.
  * Combines all buffered messages and processes them as a single order.
+ *
+ * Uses AI (Gemini) as primary parser, falls back to Regex if AI fails.
  */
 async function processConversation(senderId) {
   const convo = conversations.get(senderId);
@@ -146,8 +150,39 @@ async function processConversation(senderId) {
     return;
   }
 
-  // Parse the combined text with the enhanced parser
-  const order = parseOrder(combinedText, `user_${senderId}`, 'DM');
+  const now = new Date();
+
+  // ── Step 1: Try AI Parser (Primary Brain) ──
+  let order = null;
+  let usedAI = false;
+
+  const aiResult = await parseWithAI(combinedText);
+
+  if (aiResult) {
+    // AI succeeded! Build the order object from AI results
+    usedAI = true;
+    order = {
+      isOrder: true,
+      customer: `user_${senderId}`,
+      customerName: aiResult.customerName,
+      phone: aiResult.phone,
+      address: aiResult.address,
+      rawMessage: combinedText,
+      quantity: aiResult.quantity || '1',
+      size: aiResult.size || 'غير محدد',
+      color: aiResult.color,
+      product: aiResult.product || 'يرجى المراجعة',
+      source: 'DM',
+      date: now.toLocaleDateString('ar-IQ', { year: 'numeric', month: '2-digit', day: '2-digit' }),
+      time: now.toLocaleTimeString('ar-IQ', { hour: '2-digit', minute: '2-digit' }),
+      status: '🟡 New',
+    };
+    console.log('🤖 Using AI-parsed order data.');
+  } else {
+    // ── Step 2: Fallback to Regex Parser (Safety Net) ──
+    console.log('🔧 AI unavailable. Using Regex fallback parser.');
+    order = parseOrder(combinedText, `user_${senderId}`, 'DM');
+  }
 
   try {
     // Check if we extracted useful order data
@@ -156,9 +191,9 @@ async function processConversation(senderId) {
     if (hasUsefulData) {
       // ── Success path: Save + Notify + Confirm ──
       const orderNumber = await appendOrder(order);
-      await sendOrderNotification(order, orderNumber);
+      await sendOrderNotification(order, orderNumber, usedAI);
       await sendInstagramReply(senderId, ORDER_CONFIRMED_MESSAGE);
-      console.log(`✅ Order #${orderNumber} from ${senderId} fully processed.`);
+      console.log(`✅ Order #${orderNumber} from ${senderId} fully processed. (${usedAI ? '🤖 AI' : '🔧 Regex'})`);
     } else {
       // ── Fallback path: Forward raw message to Telegram ──
       await sendRawMessageNotification(senderId, combinedText);
@@ -167,7 +202,6 @@ async function processConversation(senderId) {
     }
   } catch (error) {
     console.error(`❌ Error processing conversation from ${senderId}:`, error.message);
-    // Last resort: try to forward raw message to Telegram
     try {
       await sendRawMessageNotification(senderId, combinedText);
     } catch (e) {
