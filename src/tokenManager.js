@@ -70,6 +70,11 @@ async function getLongLivedToken(shortLivedToken) {
 // ─── Refresh existing long-lived token ───────────────────────────────────────
 
 async function refreshToken() {
+  // Guard: skip refresh if META credentials are not set
+  if (!process.env.META_APP_ID || !process.env.META_APP_SECRET) {
+    console.warn('⚠️  META_APP_ID or META_APP_SECRET not set — skipping token refresh.');
+    return;
+  }
   const currentToken = getCurrentToken();
   try {
     const response = await axios.get('https://graph.facebook.com/v19.0/oauth/access_token', {
@@ -123,6 +128,12 @@ function startAutoRefresh() {
 // ─── Initialize on startup ────────────────────────────────────────────────────
 
 async function initialize() {
+  // Guard: skip if no Instagram token configured
+  if (!process.env.INSTAGRAM_ACCESS_TOKEN) {
+    console.warn('⚠️  INSTAGRAM_ACCESS_TOKEN not set — token manager skipped.');
+    return;
+  }
+
   const store = readTokenStore();
 
   // If no token stored yet, save the one from .env

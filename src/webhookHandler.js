@@ -92,7 +92,8 @@ function handleVerification(req, res) {
   const token = req.query['hub.verify_token'];
   const challenge = req.query['hub.challenge'];
 
-  if (mode === 'subscribe' && token === process.env.WEBHOOK_VERIFY_TOKEN) {
+  const verifyToken = process.env.WEBHOOK_VERIFY_TOKEN || process.env.VERIFY_TOKEN;
+  if (mode === 'subscribe' && token === verifyToken) {
     console.log('✅ Webhook verified by Meta!');
     return res.status(200).send(challenge);
   }

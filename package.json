@@ -1,7 +1,7 @@
 {
   "name": "instagram-order-agent",
-  "version": "1.0.0",
-  "description": "Collects Instagram orders and sends them to WhatsApp and Google Sheets",
+  "version": "3.0.0",
+  "description": "Instagram Order Bot — Pure Regex State Machine, No AI",
   "main": "src/server.js",
   "scripts": {
     "start": "node src/server.js",

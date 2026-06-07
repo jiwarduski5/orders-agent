@@ -12,9 +12,10 @@ const { google } = require('googleapis');
 
 // ─── Auth Setup ───────────────────────────────────────────────────────────────
 function getAuth() {
+  const privateKey = (process.env.GOOGLE_PRIVATE_KEY || '').replace(/\\n/g, '\n');
   return new google.auth.JWT({
     email: process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL,
-    key: process.env.GOOGLE_PRIVATE_KEY.replace(/\\n/g, '\n'),
+    key: privateKey,
     scopes: ['https://www.googleapis.com/auth/spreadsheets'],
   });
 }
@@ -77,7 +78,7 @@ async function getNextRowNumber(sheets, spreadsheetId) {
 async function appendOrder(order) {
   const auth = getAuth();
   const sheets = google.sheets({ version: 'v4', auth });
-  const spreadsheetId = process.env.GOOGLE_SHEET_ID;
+  const spreadsheetId = process.env.SPREADSHEET_ID || process.env.GOOGLE_SHEET_ID;
 
   try {
     await ensureHeader(sheets, spreadsheetId);

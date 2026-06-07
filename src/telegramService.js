@@ -117,4 +117,4 @@ async function sendRawMessageNotification(senderId, rawText) {
   console.log(`📤 Raw message forwarded to Telegram from ${senderId}.`);
 }
 
-module.exports = { sendOrderNotification, sendRawMessageNotification };
+module.exports = { sendOrderNotification, sendRawMessageNotification, sendTelegram };
