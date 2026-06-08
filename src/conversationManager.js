@@ -21,15 +21,19 @@ const LANG = {
   // ── BADINI KURDISH ──────────────────────────────────────────────────────────
   ku: {
     langSelected:
-      '',
+      'زمانێ کوردی هەڵبژارت!\n' +
+      'بخێرهاتی!',
+
     welcome:
-      'بخێرهاتی دێ چاوا شێم هاریکاریا تەکەم؟ \n' +
-      '1: داخازیەکێ بکە \n' +
-      '2: پەیوەندیێ بمە بکە \n' +
-      'ژمارە ١ بنڤیسە بو داخازکرنێ\n ژمارە ٢ بنڤیسە بو پەیوەندیێ',
+      'بخێرهاتی دێ چاوا شێم هاریکاریا تەکەم؟ \n\n' +
+      '─────────────────────\n' +
+      '1 داخازیەکێ بکە \n' +
+      '2 پەیوەندیێ بمە بکە \n' +
+      '─────────────────────\n' +
+      '  ١ یان ٢ بنڤیسە',
 
     orderForm:
-      ' گەلەک باشە! ئەڤێ فورمێ پر بکە و بۆمە بنێرە \n' +
+      ' گەلەک باشە! ئەڤێ فورمێ پر بکە و بۆمە بنێرە \n\n' +
       'ناڤ:\n' +
       'ژمارا موبایلێ:\n' +
       'ناڤونیشان:\n' +
@@ -39,9 +43,9 @@ const LANG = {
 
     anotherOrder:
       'داخازیا تە هاتە وەرگرتن!\n' +
-      'تە دڤێت داخازیەکا دیژی بکەی؟ \n' +
-      '1: بەلی\n' +
-      '2: نەخێر',
+      'تە دڤێت داخازیەکا دیژی بکەی؟ \n\n' +
+      '1 بەلی\n' +
+      '2 نەخێر',
 
     thankYou:
       'سوپاسیا تە دکەین!\n' +
@@ -53,7 +57,7 @@ const LANG = {
       ' چاڤەڕێ بە...',
 
     invalidChoice:
-      '1: یان 2: هەڵبژێرە ',
+      '١ یان ٢ هەڵبژێرە ',
 
     invalidForm:
       'فورمێ بدروستی پر بکە و دوبارە بنێرە \n\n' +
@@ -72,10 +76,13 @@ const LANG = {
       'تێبینی:\n',
 
     invalidYesNo:
-      '1: یان 2: هەڵبژێرە ',
+      '١ یان ٢ بنڤیسە ',
 
     restart:
       'باشە! دوبارە دەستپێدەکەین',
+
+    cancelMsg:
+      'داخازیا تە هاتە هەلوەشاندن. رۆژەکا خۆش بۆتە دخازین! 👋',
 
     summaryHeader: 'کورتیا داخازیا تە:\n',
     summaryOrder: (i) => `──── داخازی #${i + 1} ────\n`,
@@ -158,6 +165,9 @@ const LANG = {
     restart:
       ' حسناً! لنبدأ من جديد ',
 
+    cancelMsg:
+      'تم إلغاء طلبك. نتمنى لك يوماً سعيداً! 👋',
+
     summaryHeader: ' ملخص طلبك:\n',
     summaryOrder: (i) => `──── الطلب #${i + 1} ────\n`,
     summaryName: ' الاسم',
@@ -239,6 +249,9 @@ const LANG = {
     restart:
       ' Ok! Let\'s start again ',
 
+    cancelMsg:
+      'Your order has been cancelled. Have a great day! 👋',
+
     summaryHeader: ' Your order summary:\n',
     summaryOrder: (i) => `──── Order #${i + 1} ────\n`,
     summaryName: ' Name',
@@ -255,10 +268,11 @@ const LANG = {
 
 // ─── LANGUAGE SELECTION MENU (shown to EVERY new user) ────────────────────────
 const LANG_SELECT_MSG =
-  'Please select your language\n' +
-  '1: کوردی\n' +
-  '2: عربی\n' +
-  '3: English\n';
+  'Please select your language\n\n' +
+  'کوردی\n' +
+  'عربي\n' +
+  'English\n' +
+  '1 / 2 / 3';
 
 // ─── CONVERSATIONS STORE ──────────────────────────────────────────────────────
 const sessionStore = require('./sessionStore');
@@ -300,6 +314,11 @@ function isRestart(text) {
   const t = text.trim().toLowerCase();
   return ['دەستپیک', 'menu', 'restart', 'start', 'ابدأ', 'رجوع',
     'back', 'باك', 'قائمة', 'قايمة', 'زمان', 'lang', 'language'].includes(t);
+}
+
+function isCancel(text) {
+  const t = text.trim().toLowerCase();
+  return ['stop', 'cancel', 'الغاء', 'إلغاء', 'راوەستان', 'بەسە', 'بەس', 'قفل', 'بەطال', 'بطال'].includes(t);
 }
 
 function getMenuChoice(text) {
@@ -460,6 +479,17 @@ async function handleNewMessage(senderId, messageText, messageId) {
     await sessionStore.set(senderId, convo);
     await typingDelay(LANG_SELECT_MSG);
     await sendInstagramReply(senderId, LANG_SELECT_MSG);
+    return;
+  }
+
+  // ── CANCEL KEYWORD — clears the session entirely ────────────────────────────
+  if (isCancel(text)) {
+    const L = convo.lang ? getLangPack(convo) : LANG.ku;
+    const cancelText = L.cancelMsg;
+    await sessionStore.delete(senderId);
+    console.log(`❌ [${senderId}] cancelled their order`);
+    await typingDelay(cancelText);
+    await sendInstagramReply(senderId, cancelText);
     return;
   }
 
