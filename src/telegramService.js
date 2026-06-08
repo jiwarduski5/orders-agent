@@ -9,7 +9,87 @@
  * Ultra-clear layout designed for instant readability.
  */
 
-const axios = require('axios');
+/**
+ * telegramService.js
+ *
+ * Sends Telegram messages to the shop owner via Telegram Bot API.
+ * Uses node-telegram-bot-api for long polling to handle Admin buttons.
+ */
+
+const TelegramBot = require('node-telegram-bot-api');
+
+let bot = null;
+
+/**
+ * Initialize the Telegram bot (called once from server.js)
+ */
+function initTelegramBot() {
+  const token = process.env.TELEGRAM_BOT_TOKEN;
+  if (!token) {
+    console.log('⚠️ TELEGRAM_BOT_TOKEN missing. Telegram dashboard disabled.');
+    return;
+  }
+
+  bot = new TelegramBot(token, { polling: true });
+  console.log('✅ Telegram Admin Bot is running...');
+
+  // Listen for button clicks
+  bot.on('callback_query', async (query) => {
+    const action = query.data; // 'deliver' or 'cancel'
+    const msgId = query.message.message_id;
+    const chatId = query.message.chat.id;
+    const originalText = query.message.text || ''; // text (stripped of HTML tags by Telegram API)
+
+    // Append the status indicator to the text
+    let newText = originalText;
+    if (action === 'deliver') {
+      newText = '✅ [DELIVERED]\n\n' + newText;
+    } else if (action === 'cancel') {
+      newText = '❌ [CANCELLED]\n\n' + newText;
+    }
+
+    try {
+      // Edit the message: replace it with plain text + no keyboard
+      await bot.editMessageText(newText, {
+        chat_id: chatId,
+        message_id: msgId,
+        reply_markup: { inline_keyboard: [] } // removes the buttons
+      });
+      
+      // Acknowledge the callback
+      await bot.answerCallbackQuery(query.id, { text: 'Order Updated!' });
+    } catch (err) {
+      console.error('❌ Failed to edit Telegram message:', err.message);
+    }
+  });
+}
+
+/**
+ * Sends a Telegram text message with Admin buttons
+ */
+async function sendTelegram(text) {
+  const chatId = process.env.TELEGRAM_CHAT_ID;
+  if (!bot || !chatId) {
+    console.log('⚠️ Telegram bot not initialized or chat ID missing. Skipping notification.');
+    return;
+  }
+
+  try {
+    await bot.sendMessage(chatId, text, {
+      parse_mode: 'HTML',
+      reply_markup: {
+        inline_keyboard: [
+          [
+            { text: '✅ Mark Delivered', callback_data: 'deliver' },
+            { text: '❌ Cancel Order', callback_data: 'cancel' }
+          ]
+        ]
+      }
+    });
+  } catch (error) {
+    console.error(`❌ Telegram send failed: ${error.message}`);
+  }
+}
 
 /**
  * Formats the order details into a beautiful, ultra-clear Telegram message (HTML)
@@ -70,51 +150,17 @@ function formatRawMessage(senderId, rawText) {
   );
 }
 
-/**
- * Sends a Telegram text message
- */
-async function sendTelegram(text) {
-  const token = process.env.TELEGRAM_BOT_TOKEN;
-  const chatId = process.env.TELEGRAM_CHAT_ID;
-
-  if (!token || !chatId) {
-    console.log('⚠️ Telegram credentials missing. Skipping notification.');
-    return;
-  }
-
-  try {
-    const response = await axios.post(
-      `https://api.telegram.org/bot${token}/sendMessage`,
-      {
-        chat_id: chatId,
-        text: text,
-        parse_mode: 'HTML'
-      }
-    );
-
-    return response.data;
-  } catch (error) {
-    const errMsg = error.response?.data?.description || error.message;
-    console.error(`❌ Telegram send failed: ${errMsg}`);
-  }
-}
-
-/**
- * Sends a formatted order notification to Telegram
- */
 async function sendOrderNotification(order, orderNumber, usedAI = false) {
   const message = formatTelegramMessage(order, orderNumber, usedAI);
   await sendTelegram(message);
   console.log(`✅ Telegram notification sent for order #${orderNumber}.`);
 }
 
-/**
- * Sends a raw message notification to Telegram (fallback)
- */
 async function sendRawMessageNotification(senderId, rawText) {
   const message = formatRawMessage(senderId, rawText);
   await sendTelegram(message);
   console.log(`📤 Raw message forwarded to Telegram from ${senderId}.`);
 }
 
-module.exports = { sendOrderNotification, sendRawMessageNotification, sendTelegram };
+module.exports = { initTelegramBot, sendOrderNotification, sendRawMessageNotification, sendTelegram };
+

@@ -9,6 +9,7 @@ require('dotenv').config();
 const express = require('express');
 const { handleVerification, handleWebhookEvent } = require('./webhookHandler');
 const { initialize: initTokenManager } = require('./tokenManager');
+const { initTelegramBot } = require('./telegramService');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -57,6 +58,9 @@ app.listen(PORT, async () => {
   } catch (err) {
     console.warn('⚠️  Token manager init failed (check Meta credentials):', err.message);
   }
+
+  // Initialize Telegram Bot
+  initTelegramBot();
 
   console.log('✅ Server ready. Waiting for Instagram events...');
   console.log('');
