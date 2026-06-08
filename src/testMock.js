@@ -1,67 +1,79 @@
 require('dotenv').config();
-const { handleNewMessage } = require('./conversationManager');
 
-// Mock instagramReplyService to just console.log the bot's reply
-jest = {
-  mock: function() {}
-};
-
-// We will replace sendInstagramReply dynamically
+// Mock Instagram reply
 const replyService = require('./instagramReplyService');
 replyService.sendInstagramReply = async (senderId, text) => {
-  console.log(`\n🤖 BOT SAYS:\n${text}\n`);
+  console.log(`\n🤖 BOT [${senderId}]:\n${text}\n${'─'.repeat(40)}`);
 };
 
-// Mock sheet and telegram to avoid API calls during test
+// Mock Sheets
 const sheetsService = require('./sheetsService');
 sheetsService.appendOrder = async (order) => {
-  console.log(`\n📋 MOCK SHEET SAVED: ${order.customerName} - ${order.product}\n`);
+  console.log(`\n📊 SHEET: ${order.customerName} | ${order.product}\n`);
   return Math.floor(Math.random() * 1000);
 };
 
+// Mock Telegram
 const telegramService = require('./telegramService');
 telegramService.sendTelegram = async (msg) => {
-  console.log(`\n🚀 MOCK TELEGRAM SENT:\n${msg}\n`);
+  console.log(`\n🚀 TELEGRAM SENT ✅\n`);
 };
 
+const { handleNewMessage } = require('./conversationManager');
+
+async function delay(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+async function simulate(sender, steps) {
+  let id = 1;
+  for (const msg of steps) {
+    console.log(`\n👤 USER [${sender}]: "${msg}"`);
+    await handleNewMessage(sender, msg, `${sender}_${id++}`);
+    await delay(300);
+  }
+}
+
 async function runTest() {
-  const sender = "testUser123";
-  let msgId = 1;
+  console.log('\n🧪 ═══════════════════════════════════');
+  console.log('   LANGUAGE SELECTION TEST');
+  console.log('═══════════════════════════════════\n');
 
-  console.log("=== STARTING MOCK TEST ===");
+  // TEST 1: Kurdish user
+  console.log('\n🇮🇶 ── TEST 1: Kurdish User ──');
+  await simulate('user_KU', [
+    'سلاڤ',       // first message → shows lang menu
+    '1',          // picks Badini Kurdish
+    '1',          // picks Order
+    '👤 ناڤ: Jiwar\n📱 ژمارا موبایلێ: 07501234567\n📍 ناڤونیشان: Duhok\n📦 بەرهەمێ دڤێت: Nike Shoes\n📝 تێبینی: Fast',
+    'نەخێر',       // no more orders
+  ]);
 
-  // 1. User says hi
-  console.log("👤 USER: hi");
-  await handleNewMessage(sender, "hi", msgId++);
-  await new Promise(r => setTimeout(r, 500));
+  await delay(500);
 
-  // 2. User chooses 1
-  console.log("👤 USER: 1");
-  await handleNewMessage(sender, "1", msgId++);
-  await new Promise(r => setTimeout(r, 500));
+  // TEST 2: Arabic user
+  console.log('\n🇸🇦 ── TEST 2: Arabic User ──');
+  await simulate('user_AR', [
+    'مرحبا',      // first message → shows lang menu
+    '2',          // picks Arabic
+    '1',          // picks Order
+    '👤 الاسم: Ahmed\n📱 رقم الهاتف: 07701234567\n📍 العنوان: Baghdad\n📦 المنتج المطلوب: iPhone 15\n📝 ملاحظات: none',
+    'لا',         // no more orders
+  ]);
 
-  // 3. User sends an incomplete form
-  console.log("👤 USER: just some random text");
-  await handleNewMessage(sender, "just some random text", msgId++);
-  await new Promise(r => setTimeout(r, 500));
+  await delay(500);
 
-  // 4. User sends a filled form
-  const goodForm = `
-ناڤ: Jiwar
-موبایل: 07501234567
-ناڤونیشان: Duhok
-بەرهەم: iPhone 15
-تێبینی: Fast delivery
-  `;
-  console.log("👤 USER sends valid form...");
-  await handleNewMessage(sender, goodForm, msgId++);
-  await new Promise(r => setTimeout(r, 500));
+  // TEST 3: English user
+  console.log('\n🇬🇧 ── TEST 3: English User ──');
+  await simulate('user_EN', [
+    'hello',      // first message → shows lang menu
+    '3',          // picks English
+    '1',          // picks Order
+    '👤 Name: Sara\n📱 Phone: 07601234567\n📍 Address: Erbil\n📦 Product you want: Adidas T-shirt\n📝 Notes: Size L',
+    'no',         // no more orders
+  ]);
 
-  // 5. User says no to another order
-  console.log("👤 USER: no");
-  await handleNewMessage(sender, "no", msgId++);
-
-  console.log("=== TEST FINISHED ===");
+  console.log('\n✅ ═══════════════════════════════════');
+  console.log('   ALL TESTS DONE!');
+  console.log('═══════════════════════════════════\n');
 }
 
 runTest();

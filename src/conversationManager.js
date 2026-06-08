@@ -5,200 +5,353 @@
  * Handles the full order flow for Instagram DMs.
  *
  * STATES:
+ *   lang       → Show language selection (FIRST step)
  *   menu       → Show welcome menu, wait for 1 or 2
  *   ordering   → Send form, wait for filled form
  *   confirm    → Ask if user wants another order (yes/no)
  *   human      → Bot is completely silent, owner handles manually
- *   done       → Order finalized, conversation cleared
  */
 
 const { appendOrder } = require('./sheetsService');
-// telegramService loaded dynamically in finalizeAllOrders
 const { sendInstagramReply } = require('./instagramReplyService');
 
-// ─── ALL BOT MESSAGES (Kurdish + Arabic + English) ────────────────────────────
-const MSG = {
+// ─── LANGUAGE PACKS ───────────────────────────────────────────────────────────
+const LANG = {
 
-  // Welcome menu
-  welcome:
-    'بخێرهاتی دێ چاوا شێم هاریکاریا تەکەم ؟ 👋\n' +
-    'مرحباً! كيف نقدر نساعدك؟\n' +
-    'Hello! How can we help you?\n\n' +
-    '─────────────────────\n' +
-    '1️⃣  من دڤێت داخازیەکێ بکەم\n' +
-    '     أريد أطلب منتج  /  I want to order\n\n' +
-    '2️⃣  من دڤێت پەیوەندیێ بوە بکەم\n' +
-    '     أريد أتواصل  /  I want to contact\n' +
-    '─────────────────────\n' +
-    'کەرەمکە ١ یان ٢ بنڤیسە 👇\n' +
-    'اختر 1 أو 2  /  Reply with 1 or 2',
+  // ── BADINI KURDISH ──────────────────────────────────────────────────────────
+  ku: {
+    langSelected:
+      '🌟 زمانێ کوردی هەڵبژارت!\n' +
+      'بخێرهاتی! 🙏',
 
-  // Option 1 — send the order form
-  orderForm:
-    'گەلەک باشە ئەڤێ فورمێ پر بکە و بۆمە ڤرێکە ڤە وەک نامە 👇\n' +
-    'ممتاز! أرسل لنا هذا النموذج  /  Great! Fill this form:\n\n' +
-    '──────────────────────\n' +
-    'ناڤ / الاسم / Name:\n' +
-    'ژمارا موبایلێ / رقم الهاتف / Phone:\n' +
-    'ناڤونیشان / العنوان / Address:\n' +
-    'تە چ جورە بەرهەم دڤێت / المنتج / Product:\n' +
-    'تێبینی / ملاحظات / Notes:\n' +
-    '──────────────────────',
+    welcome:
+      '🏪 بخێرهاتی دێ چاوا شێم هاریکاریا تەکەم؟ 👋\n\n' +
+      '─────────────────────\n' +
+      '1️⃣  داخازیەکێ بکە 🛍️\n' +
+      '2️⃣  پەیوەندیێ بوە بکە 💬\n' +
+      '─────────────────────\n' +
+      '👇 کەرەمکە ١ یان ٢ بنڤیسە',
 
-  // Ask if they want another order
-  anotherOrder:
-    'داخازیا تە نوکە لدەف مەیە ✅\n' +
-    'تە دڤێت داخازیەکا دیژی بکەی ?\n\n' +
-    'تم استلام طلبك ✅ هل تريد إضافة طلب آخر؟\n' +
-    'Order received ✅ Want to add another order?\n\n' +
-    'بەلی ✅  /  نعم  /  Yes\n' +
-    'نەخێر ❌  /  لا  /  No',
+    orderForm:
+      '📋 گەلەک باشە! ئەڤێ فورمێ پر بکە و بۆمە بنێرە 👇\n\n' +
+      '══════════════════════\n' +
+      '👤 ناڤ:\n' +
+      '📱 ژمارا موبایلێ:\n' +
+      '📍 ناڤونیشان:\n' +
+      '📦  تە چجورە بەرهەم دڤێت:\n' +
+      '📝 تێبینی:\n' +
+      '══════════════════════',
 
-  // Final thank you — all orders saved
-  thankYou:
-    'سوپاس بوتە داخازیاتە هاتە وەرگرتن سەرکەفتیانە 🎉\n' +
-    'لنێزیک دێ پەیوەندیێ بتەکەین\n\n' +
-    'شكراً! تم استلام طلباتك بنجاح 🎉\n' +
-    'سنتواصل معك قريباً\n\n' +
-    'Thank you! All your orders received 🎉\n' +
-    'We will contact you soon!',
+    anotherOrder:
+      '✅ داخازیا تە هاتە وەرگرتن!\n' +
+      'تە دڤێت داخازیەکا دیژی بکەی؟ 🛍️\n\n' +
+      '✅ بەلی\n' +
+      '❌ نەخێر',
 
-  // Option 2 — go silent
-  humanMode:
-    'بێ گومان تۆ دشێی نامێن خو ڤرێکەی و تیما مە دێ بەرسڤدەت 😊\n\n' +
-    'بالتأكيد! تفضل راسل الصفحة بشكل طبيعي 😊\n' +
-    'سيرد عليك أحد من فريقنا قريباً\n\n' +
-    'Of course! Feel free to message the page normally 😊\n' +
-    'Our team will reply to you shortly.',
+    thankYou:
+      '🎉 سوپاسیا تە دکەین!\n' +
+      'داخازیاتە سەرکەفتیانە هاتە وەرگرتن ✅\n' +
+      'لنێزیک دێ پەیوەندیێ بتەکەین 📞',
 
-  // Invalid choice (not 1 or 2)
-  invalidChoice:
-    'یان ١ بهەلبژێرە یان ٢ 😊\n' +
-    'اختر 1 أو 2 فقط  /  Please reply with 1 or 2 only 😊',
+    humanMode:
+      '💬 بێ گومان! تیما مە دێ بەرسڤا تەبدەت 😊\n' +
+      ' چاڤەڕێ بە...',
 
-  // Form not filled correctly
-  invalidForm:
-    'فورمێ بدروستی پر بکە و دوبارە بهنێرە 👇\n' +
-    'الرجاء ملء جميع الحقول بشكل صحيح وإعادة الإرسال 👇\n' +
-    'Please fill all fields correctly and send again 👇\n\n' +
-    '──────────────────────\n' +
-    'ناڤ / الاسم / Name:\n' +
-    'ژمارا موبایلێ / رقم الهاتف / Phone:\n' +
-    'ناڤونیشان / العنوان / Address:\n' +
-    'تە چ جورە بەرهەم دڤێت / المنتج / Product:\n' +
-    'تێبینی / ملاحظات / Notes:\n' +
-    '──────────────────────',
+    invalidChoice:
+      '⚠️ کەرەمکە ١ یان ٢ هەڵبژێرە 😊',
 
-  // Missing some fields
-  missingFields:
-    'وەکی یا دیار تە هندەک بەش یێ ژبیرکری دوبارە پربکە 👇\n' +
-    'يبدو أنك نسيت بعض الحقول، أعد التعبئة 👇\n' +
-    'It seems you missed some fields. Please fill again 👇\n\n' +
-    '──────────────────────\n' +
-    'ناڤ / الاسم / Name:\n' +
-    'ژمارا موبایلێ / رقم الهاتف / Phone:\n' +
-    'ناڤونیشان / العنوان / Address:\n' +
-    'تە چ جورە بەرهەم دڤێت / المنتج / Product:\n' +
-    'تێبینی / ملاحظات / Notes:\n' +
-    '──────────────────────',
+    invalidForm:
+      '⚠️ فورمێ بدروستی پر بکە و دوبارە بنێرە 👇\n\n' +
+      '══════════════════════\n' +
+      '👤 ناڤ:\n' +
+      '📱 ژمارا موبایلێ:\n' +
+      '📍 ناڤونیشان:\n' +
+      '📦 تە چجورە بەرهەم دڤێت:\n' +
+      '📝 تێبینی:\n' +
+      '══════════════════════',
 
-  // Invalid yes/no answer
-  invalidYesNo:
-    'بەرسڤ ب بەلی یان نەخێر بدە 😊\n' +
-    'الرجاء الرد بـ نعم أو لا فقط  /  Please reply Yes or No only 😊',
+    missingFields:
+      '⚠️ هندەک بەش دکێمن ! دوبارە پربکە 👇\n\n' +
+      '══════════════════════\n' +
+      '👤 ناڤ:\n' +
+      '📱 ژمارا موبایلێ:\n' +
+      '📍 ناڤونیشان:\n' +
+      '📦 تە چجورە بەرهەم دڤێت:\n' +
+      '📝 تێبینی:\n' +
+      '══════════════════════',
 
-  // Restart keyword response
-  restart:
-    'ببورە دا دوبارە دەستپێبکەین 😊\n' +
-    'حسناً! لنبدأ من جديد  /  Let\'s start again 😊',
+    invalidYesNo:
+      '⚠️  بەلی یان نەخێر بنڤیسە 😊',
 
-  // Order summary (sent to customer before saving)
-  summaryHeader:
-    'ئەڤە کورتیا داخازیا تەیە:\n' +
-    'ملخص طلبك:  /  Your order summary:\n',
+    restart:
+      '🔄 باشە! دوبارە دەستپێدەکەین 😊',
+
+    summaryHeader: '📋 کورتیا داخازیا تەیە:\n',
+    summaryOrder: (i) => `──── داخازی #${i + 1} ────\n`,
+    summaryName: '👤 ناڤ',
+    summaryPhone: '📱 موبایل',
+    summaryAddress: '📍 ناڤونیشان',
+    summaryProduct: '📦 تە چجورە بەرهەم دڤێت',
+    summaryNotes: '📝 تێبینی',
+    summaryReceived: '✅ هاتە وەرگرتن',
+
+    errorMsg:
+      '❌ ببورە. دوبارە پربکە.',
+  },
+
+  // ── ARABIC ──────────────────────────────────────────────────────────────────
+  ar: {
+    langSelected:
+      '🌟 تم اختيار اللغة العربية!\n' +
+      'أهلاً وسهلاً! 🙏',
+
+    welcome:
+      '🏪 مرحباً! كيف نقدر نساعدك؟ 👋\n\n' +
+      '─────────────────────\n' +
+      '1️⃣  أريد أطلب منتج 🛍️\n' +
+      '2️⃣  أريد أتواصل مع الفريق 💬\n' +
+      '─────────────────────\n' +
+      '👇 اختر 1 أو 2',
+
+    orderForm:
+      '📋 ممتاز! أرسل لنا هذا النموذج 👇\n\n' +
+      '══════════════════════\n' +
+      '👤 الاسم:\n' +
+      '📱 رقم الهاتف:\n' +
+      '📍 العنوان:\n' +
+      '📦 المنتج المطلوب:\n' +
+      '📝 ملاحظات:\n' +
+      '══════════════════════',
+
+    anotherOrder:
+      '✅ تم استلام طلبك!\n' +
+      'هل تريد إضافة طلب آخر؟ 🛍️\n\n' +
+      '✅ نعم\n' +
+      '❌ لا',
+
+    thankYou:
+      '🎉 شكراً جزيلاً!\n' +
+      'تم استلام طلباتك بنجاح ✅\n' +
+      'سنتواصل معك قريباً 📞',
+
+    humanMode:
+      '💬 بالتأكيد! سيرد عليك أحد من فريقنا قريباً 😊\n' +
+      'تفضل بالانتظار...',
+
+    invalidChoice:
+      '⚠️ الرجاء اختيار 1 أو 2 فقط 😊',
+
+    invalidForm:
+      '⚠️ الرجاء ملء جميع الحقول بشكل صحيح وإعادة الإرسال 👇\n\n' +
+      '══════════════════════\n' +
+      '👤 الاسم:\n' +
+      '📱 رقم الهاتف:\n' +
+      '📍 العنوان:\n' +
+      '📦 المنتج المطلوب:\n' +
+      '📝 ملاحظات:\n' +
+      '══════════════════════',
+
+    missingFields:
+      '⚠️ يبدو أنك نسيت بعض الحقول، أعد التعبئة 👇\n\n' +
+      '══════════════════════\n' +
+      '👤 الاسم:\n' +
+      '📱 رقم الهاتف:\n' +
+      '📍 العنوان:\n' +
+      '📦 المنتج المطلوب:\n' +
+      '📝 ملاحظات:\n' +
+      '══════════════════════',
+
+    invalidYesNo:
+      '⚠️ الرجاء الرد بـ نعم أو لا فقط 😊',
+
+    restart:
+      '🔄 حسناً! لنبدأ من جديد 😊',
+
+    summaryHeader: '📋 ملخص طلبك:\n',
+    summaryOrder: (i) => `──── الطلب #${i + 1} ────\n`,
+    summaryName: '👤 الاسم',
+    summaryPhone: '📱 الهاتف',
+    summaryAddress: '📍 العنوان',
+    summaryProduct: '📦 المنتج',
+    summaryNotes: '📝 ملاحظات',
+    summaryReceived: '✅ تم الاستلام',
+
+    errorMsg:
+      '❌ عذراً، حدث خطأ. حاول مرة أخرى.',
+  },
+
+  // ── ENGLISH ─────────────────────────────────────────────────────────────────
+  en: {
+    langSelected:
+      '🌟 English selected!\n' +
+      'Welcome! 🙏',
+
+    welcome:
+      '🏪 Hello! How can we help you today? 👋\n\n' +
+      '─────────────────────\n' +
+      '1️⃣  I want to place an order 🛍️\n' +
+      '2️⃣  I want to contact the team 💬\n' +
+      '─────────────────────\n' +
+      '👇 Reply with 1 or 2',
+
+    orderForm:
+      '📋 Great! Please fill out this form and send it back 👇\n\n' +
+      '══════════════════════\n' +
+      '👤 Name:\n' +
+      '📱 Phone:\n' +
+      '📍 Address:\n' +
+      '📦 Product you want:\n' +
+      '📝 Notes:\n' +
+      '══════════════════════',
+
+    anotherOrder:
+      '✅ Your order has been received!\n' +
+      'Would you like to add another order? 🛍️\n\n' +
+      '✅ Yes\n' +
+      '❌ No',
+
+    thankYou:
+      '🎉 Thank you so much!\n' +
+      'All your orders have been received ✅\n' +
+      'We will contact you soon 📞',
+
+    humanMode:
+      '💬 Of course! Our team will reply to you shortly 😊\n' +
+      'Please wait...',
+
+    invalidChoice:
+      '⚠️ Please reply with 1 or 2 only 😊',
+
+    invalidForm:
+      '⚠️ Please fill all fields correctly and send again 👇\n\n' +
+      '══════════════════════\n' +
+      '👤 Name:\n' +
+      '📱 Phone:\n' +
+      '📍 Address:\n' +
+      '📦 Product you want:\n' +
+      '📝 Notes:\n' +
+      '══════════════════════',
+
+    missingFields:
+      '⚠️ It looks like some fields are missing. Please fill again 👇\n\n' +
+      '══════════════════════\n' +
+      '👤 Name:\n' +
+      '📱 Phone:\n' +
+      '📍 Address:\n' +
+      '📦 Product you want:\n' +
+      '📝 Notes:\n' +
+      '══════════════════════',
+
+    invalidYesNo:
+      '⚠️ Please reply with Yes or No only 😊',
+
+    restart:
+      '🔄 Ok! Let\'s start again 😊',
+
+    summaryHeader: '📋 Your order summary:\n',
+    summaryOrder: (i) => `──── Order #${i + 1} ────\n`,
+    summaryName: '👤 Name',
+    summaryPhone: '📱 Phone',
+    summaryAddress: '📍 Address',
+    summaryProduct: '📦 Product',
+    summaryNotes: '📝 Notes',
+    summaryReceived: '✅ Received',
+
+    errorMsg:
+      '❌ Sorry, an error occurred. Please try again.',
+  },
 };
 
+// ─── LANGUAGE SELECTION MENU (shown to EVERY new user) ────────────────────────
+const LANG_SELECT_MSG =
+  '🌍 کەرەمکە زمانێ خو هەڵبژێرە\n' +
+  '🌍 يرجى اختيار لغتك\n' +
+  '🌍 Please select your language\n\n' +
+  '\n' +
+  '1️⃣   کوردی (Badini)\n' +
+  '2️⃣   عربي\n' +
+  '3️⃣   English\n' +
+  '\n' +
+  '👇 1 / 2 / 3';
+
 // ─── CONVERSATIONS STORE ──────────────────────────────────────────────────────
-// Structure per user:
-// {
-//   state: 'menu' | 'ordering' | 'confirm' | 'human' | 'done'
-//   orders: [ { name, phone, address, product, notes } ]
-//   messageIds: Set
-// }
+// { state, lang, orders, messageIds }
 const conversations = new Map();
 
 // ─── HELPERS ─────────────────────────────────────────────────────────────────
 
-/**
- * Small human-like typing delay
- * Longer messages = slightly longer delay
- */
 function typingDelay(text) {
   const base = 800;
   const extra = Math.min(text.length * 5, 1200);
   return new Promise(resolve => setTimeout(resolve, base + extra));
 }
 
-/**
- * Detect if user said YES in Kurdish, Arabic, or English
- */
+function getLangPack(convo) {
+  return LANG[convo.lang] || LANG.ku;
+}
+
+function getLangChoice(text) {
+  const t = text.trim();
+  if (['1', '١', '1️⃣'].includes(t) || t.startsWith('1')) return 'ku';
+  if (['2', '٢', '2️⃣'].includes(t) || t.startsWith('2')) return 'ar';
+  if (['3', '٣', '3️⃣'].includes(t) || t.startsWith('3')) return 'en';
+  return null;
+}
+
 function isYes(text) {
   const t = text.trim().toLowerCase();
   return ['بەلی', 'بەلێ', 'بلی', 'بله', 'بلا', 'نعم', 'اه', 'آه', 'اي',
-    'yes', 'yeah', 'yep', 'y', 'ok', 'okay', 'باشە', 'ئوکەی', 'هاوار',
+    'yes', 'yeah', 'yep', 'y', 'ok', 'okay', 'باشە', 'ئوکەی',
     '✅', 'bale', 'erê', 'ere'].includes(t);
 }
 
-/**
- * Detect if user said NO in Kurdish, Arabic, or English
- */
 function isNo(text) {
   const t = text.trim().toLowerCase();
   return ['نەخێر', 'نه', 'لا', 'no', 'nope', 'n', 'نا', 'خێر',
     '❌', 'na', 'nê', 'ne'].includes(t);
 }
 
-/**
- * Detect if user wants to restart
- */
 function isRestart(text) {
   const t = text.trim().toLowerCase();
   return ['دەستپیک', 'menu', 'restart', 'start', 'ابدأ', 'رجوع',
-    'back', 'باك', 'قائمة', 'قايمة'].includes(t);
+    'back', 'باك', 'قائمة', 'قايمة', 'زمان', 'lang', 'language'].includes(t);
 }
 
-/**
- * Detect if user chose option 1 or 2 from the menu
- * Accepts: 1, ١, "option 1", "1️⃣" etc.
- */
 function getMenuChoice(text) {
   const t = text.trim();
-  // Check for 1
-  if (['1', '١', '1️⃣', 'one', '١️⃣'].includes(t)) return '1';
-  if (t.startsWith('1') || t.startsWith('١')) return '1';
-  // Check for 2
-  if (['2', '٢', '2️⃣', 'two', '٢️⃣'].includes(t)) return '2';
-  if (t.startsWith('2') || t.startsWith('٢')) return '2';
+  if (['1', '١', '1️⃣'].includes(t) || t.startsWith('1') || t.startsWith('١')) return '1';
+  if (['2', '٢', '2️⃣'].includes(t) || t.startsWith('2') || t.startsWith('٢')) return '2';
   return null;
 }
 
-/**
- * Parse a filled order form from the customer's message.
- * Tries to extract Name, Phone, Address, Product, Notes.
- * Works for Kurdish, Arabic, and English labels.
- *
- * Returns: { name, phone, address, product, notes } or null if too many fields missing
- */
 function parseFilledForm(text) {
   const lines = text.split('\n').map(l => l.trim()).filter(l => l.length > 0);
 
-  // All possible label variants per field
+  // IMPORTANT: Longer/more specific labels FIRST to avoid partial matches
   const labels = {
-    name:    ['ناڤ', 'ناو', 'الاسم', 'اسم', 'name', 'ناڤ /', 'ناو:'],
-    phone:   ['ژمارا موبایلێ', 'ژمارا', 'موبایل', 'رقم الهاتف', 'هاتف', 'phone', 'mobile', 'tel', 'ژمارا موبایلێ /'],
-    address: ['ناڤونیشان', 'ناونیشان', 'العنوان', 'عنوان', 'address', 'ناڤونیشان /'],
-    product: ['تە چ جورە بەرهەم دڤێت', 'بەرهەم', 'المنتج', 'منتج', 'product', 'تە چ جورە بەرهەم دڤێت /'],
-    notes:   ['تێبینی', 'تیبینی', 'ملاحظات', 'ملاحظه', 'notes', 'note', 'تێبینی /'],
+    name: [
+      '👤 ناڤ', '👤 الاسم', '👤 Name', '👤 name',
+      'ناڤ', 'ناو', 'الاسم', 'اسم', 'name',
+    ],
+    phone: [
+      '📱 ژمارا موبایلێ', '📱 رقم الهاتف', '📱 Phone', '📱 phone',
+      'ژمارا موبایلێ', 'ژمارا', 'موبایل', 'رقم الهاتف', 'هاتف', 'phone', 'mobile', 'tel',
+    ],
+    address: [
+      '📍 ناڤونیشان', '📍 العنوان', '📍 Address', '📍 address',
+      'ناڤونیشان', 'ناونیشان', 'العنوان', 'عنوان', 'address',
+    ],
+    product: [
+      '📦 بەرهەمێ دڤێت', '📦 المنتج المطلوب', '📦 Product you want',
+      '📦 بەرهەم', '📦 المنتج', '📦 product',
+      'تە چ جورە بەرهەم دڤێت', 'بەرهەمێ دڤێت', 'بەرهەم',
+      'المنتج المطلوب', 'المنتج', 'منتج',
+      'Product you want', 'product you want', 'product',
+    ],
+    notes: [
+      '📝 تێبینی', '📝 ملاحظات', '📝 Notes', '📝 notes',
+      'تێبینی', 'تیبینی', 'ملاحظات', 'ملاحظه', 'notes', 'note',
+    ],
   };
 
   const result = { name: '', phone: '', address: '', product: '', notes: '' };
@@ -216,7 +369,7 @@ function parseFilledForm(text) {
     }
   }
 
-  // If labels not found, try positional parsing (user sent values only, line by line)
+  // Positional fallback (user sent values only, line by line)
   const hasAnyLabel = Object.values(result).some(v => v.length > 0);
   if (!hasAnyLabel && lines.length >= 4) {
     result.name    = lines[0] || '';
@@ -226,50 +379,41 @@ function parseFilledForm(text) {
     result.notes   = lines[4] || '';
   }
 
-  // Validate — we need at least name + phone + product
   const valid = result.name.length > 0 && result.phone.length > 0 && result.product.length > 0;
   return valid ? result : null;
 }
 
-/**
- * Escape special regex characters in a string
- */
 function escapeRegex(str) {
   return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
-/**
- * Build order summary message to show the customer
- */
-function buildSummary(ordersList) {
-  let summary = MSG.summaryHeader + '\n';
+function buildSummary(ordersList, L) {
+  let summary = L.summaryHeader + '\n';
   ordersList.forEach((order, i) => {
-    summary += `──── ژمارا داخازیاتە / Order #${i + 1} ────\n`;
-    summary += `👤 ناڤ / Name: ${order.name}\n`;
-    summary += `📱 موبایل / Phone: ${order.phone}\n`;
-    summary += `📍 ناڤونیشان / Address: ${order.address}\n`;
-    summary += `📦 بەرهەم / Product: ${order.product}\n`;
+    summary += L.summaryOrder(i);
+    summary += `${L.summaryName}: ${order.name}\n`;
+    summary += `${L.summaryPhone}: ${order.phone}\n`;
+    summary += `${L.summaryAddress}: ${order.address}\n`;
+    summary += `${L.summaryProduct}: ${order.product}\n`;
     if (order.notes && order.notes !== '—') {
-      summary += `📝 تێبینی / Notes: ${order.notes}\n`;
+      summary += `${L.summaryNotes}: ${order.notes}\n`;
     }
     summary += '\n';
   });
-  summary += 'هاتە وەرگرتن ✅\n';
-  summary += 'تم الاستلام ✅  /  Received ✅';
+  summary += L.summaryReceived;
   return summary;
 }
 
-/**
- * Build Telegram notification for ALL orders at once
- */
-function buildTelegramNotification(senderId, ordersList, orderStartNumber) {
+function buildTelegramNotification(senderId, ordersList, orderStartNumber, lang) {
   const now = new Date();
   const date = now.toLocaleDateString('ar-IQ', { year: 'numeric', month: '2-digit', day: '2-digit' });
   const time = now.toLocaleTimeString('ar-IQ', { hour: '2-digit', minute: '2-digit' });
+  const langLabel = { ku: '🇮🇶 Badini Kurdish', ar: '🇸🇦 Arabic', en: '🇬🇧 English' }[lang] || 'Unknown';
 
   let msg = `━━━━━━━━━━━━━━━━━━━━━━\n`;
   msg += `🛒 <b>NEW ORDER SESSION</b>\n`;
   msg += `🔗 <b>IG User:</b> user_${senderId}\n`;
+  msg += `🌍 <b>Language:</b> ${langLabel}\n`;
   msg += `📅 <b>Date:</b> ${date} - ${time}\n`;
   msg += `📦 <b>Total Orders:</b> ${ordersList.length}\n`;
   msg += `━━━━━━━━━━━━━━━━━━━━━━\n\n`;
@@ -292,11 +436,11 @@ function buildTelegramNotification(senderId, ordersList, orderStartNumber) {
 async function handleNewMessage(senderId, messageText, messageId) {
   if (!messageText || !messageText.trim()) return;
 
-  // Get or create conversation
   let convo = conversations.get(senderId);
   if (!convo) {
     convo = {
-      state: 'menu',
+      state: 'lang',   // ← ALWAYS starts at lang selection
+      lang: null,
       orders: [],
       messageIds: new Set(),
     };
@@ -304,59 +448,76 @@ async function handleNewMessage(senderId, messageText, messageId) {
     console.log(`💬 New session started: ${senderId}`);
   }
 
-  // Deduplicate messages
   if (convo.messageIds.has(messageId)) return;
   convo.messageIds.add(messageId);
 
-  // Cleanup messageIds to prevent memory leak (keep last 50)
   if (convo.messageIds.size > 50) {
     const first = convo.messageIds.values().next().value;
     convo.messageIds.delete(first);
   }
 
   const text = messageText.trim();
-  console.log(`👤 [${senderId}] state=${convo.state} msg="${text}"`);
+  console.log(`👤 [${senderId}] state=${convo.state} lang=${convo.lang} msg="${text}"`);
 
   // ── HUMAN MODE — complete silence ──────────────────────────────────────────
   if (convo.state === 'human') {
-    console.log(`🔕 [${senderId}] is in human mode — bot is silent`);
+    console.log(`🔕 [${senderId}] in human mode — bot silent`);
     return;
   }
 
-  // ── RESTART KEYWORD — works from any state ──────────────────────────────────
+  // ── RESTART KEYWORD — goes back to language selection ───────────────────────
   if (isRestart(text)) {
-    convo.state = 'menu';
+    convo.state = 'lang';
+    convo.lang  = null;
     convo.orders = [];
-    console.log(`🔄 [${senderId}] restarted conversation`);
-    await typingDelay(MSG.restart);
-    await sendInstagramReply(senderId, MSG.restart + '\n\n' + MSG.welcome);
+    console.log(`🔄 [${senderId}] restarted`);
+    await typingDelay(LANG_SELECT_MSG);
+    await sendInstagramReply(senderId, LANG_SELECT_MSG);
     return;
   }
+
+  // ── STATE: lang ──────────────────────────────────────────────────────────────
+  if (convo.state === 'lang') {
+    const chosen = getLangChoice(text);
+
+    if (chosen) {
+      convo.lang  = chosen;
+      convo.state = 'menu';
+      const L = getLangPack(convo);
+      console.log(`🌍 [${senderId}] selected lang: ${chosen}`);
+      await typingDelay(L.langSelected);
+      await sendInstagramReply(senderId, L.langSelected + '\n\n' + L.welcome);
+    } else {
+      // Any message that is not 1/2/3 → show language menu
+      console.log(`🌍 [${senderId}] showing language menu`);
+      await typingDelay(LANG_SELECT_MSG);
+      await sendInstagramReply(senderId, LANG_SELECT_MSG);
+    }
+    return;
+  }
+
+  const L = getLangPack(convo);
 
   // ── STATE: menu ─────────────────────────────────────────────────────────────
   if (convo.state === 'menu') {
     const choice = getMenuChoice(text);
 
     if (choice === '1') {
-      // Option 1 — start ordering
       convo.state = 'ordering';
-      console.log(`🛒 [${senderId}] chose Option 1 — ordering`);
-      await typingDelay(MSG.orderForm);
-      await sendInstagramReply(senderId, MSG.orderForm);
+      console.log(`🛒 [${senderId}] chose Order`);
+      await typingDelay(L.orderForm);
+      await sendInstagramReply(senderId, L.orderForm);
 
     } else if (choice === '2') {
-      // Option 2 — go silent, human takes over
       convo.state = 'human';
-      console.log(`💬 [${senderId}] chose Option 2 — human mode`);
-      await typingDelay(MSG.humanMode);
-      await sendInstagramReply(senderId, MSG.humanMode);
+      console.log(`💬 [${senderId}] chose Human mode`);
+      await typingDelay(L.humanMode);
+      await sendInstagramReply(senderId, L.humanMode);
 
     } else {
-      // Any other message on first contact → show welcome menu
-      // (covers "hi", "hello", "سلاڤ", anything)
-      console.log(`📋 [${senderId}] showing welcome menu`);
-      await typingDelay(MSG.welcome);
-      await sendInstagramReply(senderId, MSG.welcome);
+      console.log(`📋 [${senderId}] showing main menu`);
+      await typingDelay(L.welcome);
+      await sendInstagramReply(senderId, L.welcome);
     }
     return;
   }
@@ -366,16 +527,14 @@ async function handleNewMessage(senderId, messageText, messageId) {
     const parsed = parseFilledForm(text);
 
     if (!parsed) {
-      // Form couldn't be parsed — check if they're missing fields
-      const hasAnyContent = text.length > 20; // They sent something but not a proper form
-      const reply = hasAnyContent ? MSG.missingFields : MSG.invalidForm;
-      console.log(`⚠️ [${senderId}] form invalid — asking again`);
+      const hasAnyContent = text.length > 20;
+      const reply = hasAnyContent ? L.missingFields : L.invalidForm;
+      console.log(`⚠️ [${senderId}] form invalid`);
       await typingDelay(reply);
       await sendInstagramReply(senderId, reply);
       return;
     }
 
-    // Form parsed successfully — save this order
     convo.orders.push({
       name:    parsed.name,
       phone:   parsed.phone,
@@ -385,34 +544,28 @@ async function handleNewMessage(senderId, messageText, messageId) {
     });
 
     console.log(`✅ [${senderId}] order #${convo.orders.length} collected`);
-
-    // Ask if they want another order
     convo.state = 'confirm';
-    await typingDelay(MSG.anotherOrder);
-    await sendInstagramReply(senderId, MSG.anotherOrder);
+    await typingDelay(L.anotherOrder);
+    await sendInstagramReply(senderId, L.anotherOrder);
     return;
   }
 
   // ── STATE: confirm ───────────────────────────────────────────────────────────
   if (convo.state === 'confirm') {
-
     if (isYes(text)) {
-      // They want another order — go back to ordering state
       convo.state = 'ordering';
-      console.log(`➕ [${senderId}] wants another order (#${convo.orders.length + 1})`);
-      await typingDelay(MSG.orderForm);
-      await sendInstagramReply(senderId, MSG.orderForm);
+      console.log(`➕ [${senderId}] wants another order`);
+      await typingDelay(L.orderForm);
+      await sendInstagramReply(senderId, L.orderForm);
 
     } else if (isNo(text)) {
-      // They're done — finalize all orders
-      console.log(`🏁 [${senderId}] finished — saving ${convo.orders.length} order(s)`);
-      await finalizeAllOrders(senderId, convo);
+      console.log(`🏁 [${senderId}] done — saving ${convo.orders.length} order(s)`);
+      await finalizeAllOrders(senderId, convo, L);
 
     } else {
-      // Invalid response
-      console.log(`⚠️ [${senderId}] invalid yes/no response`);
-      await typingDelay(MSG.invalidYesNo);
-      await sendInstagramReply(senderId, MSG.invalidYesNo);
+      console.log(`⚠️ [${senderId}] invalid yes/no`);
+      await typingDelay(L.invalidYesNo);
+      await sendInstagramReply(senderId, L.invalidYesNo);
     }
     return;
   }
@@ -420,7 +573,7 @@ async function handleNewMessage(senderId, messageText, messageId) {
 
 // ─── FINALIZE ALL ORDERS ──────────────────────────────────────────────────────
 
-async function finalizeAllOrders(senderId, convo) {
+async function finalizeAllOrders(senderId, convo, L) {
   const now = new Date();
   const date = now.toLocaleDateString('ar-IQ', { year: 'numeric', month: '2-digit', day: '2-digit' });
   const time = now.toLocaleTimeString('ar-IQ', { hour: '2-digit', minute: '2-digit' });
@@ -428,7 +581,6 @@ async function finalizeAllOrders(senderId, convo) {
   let firstOrderNumber = null;
 
   try {
-    // Save each order as a separate row in Google Sheets
     for (let i = 0; i < convo.orders.length; i++) {
       const order = convo.orders[i];
 
@@ -442,7 +594,7 @@ async function finalizeAllOrders(senderId, convo) {
         quantity: '1',
         size: '—',
         color: '—',
-        rawMessage: `ناڤ: ${order.name}\nموبایل: ${order.phone}\nناڤونیشان: ${order.address}\nبەرهەم: ${order.product}\nتێبینی: ${order.notes}`,
+        rawMessage: `Name: ${order.name}\nPhone: ${order.phone}\nAddress: ${order.address}\nProduct: ${order.product}\nNotes: ${order.notes}`,
         source: 'DM',
         date,
         time,
@@ -454,34 +606,27 @@ async function finalizeAllOrders(senderId, convo) {
       console.log(`💾 [${senderId}] order #${i + 1} saved as row #${orderNumber}`);
     }
 
-    // Send ONE combined Telegram notification for all orders
-    const telegramMsg = buildTelegramNotification(senderId, convo.orders, firstOrderNumber);
+    // Telegram notification
+    const telegramMsg = buildTelegramNotification(senderId, convo.orders, firstOrderNumber, convo.lang);
     const { sendTelegram } = require('./telegramService');
     await sendTelegram(telegramMsg);
 
-    // Send summary to customer
-    const summary = buildSummary(convo.orders);
+    // Summary to customer
+    const summary = buildSummary(convo.orders, L);
     await typingDelay(summary);
     await sendInstagramReply(senderId, summary);
 
-    // Then send thank you
     await new Promise(resolve => setTimeout(resolve, 800));
-    await sendInstagramReply(senderId, MSG.thankYou);
+    await sendInstagramReply(senderId, L.thankYou);
 
     console.log(`✅ [${senderId}] all ${convo.orders.length} order(s) finalized`);
 
   } catch (err) {
-    console.error(`❌ [${senderId}] failed to finalize orders:`, err.message);
-    // Don't leave user hanging
-    await sendInstagramReply(senderId,
-      'ببورە، هەڵەیەک ڕووی داد. دوبارە هەوڵبدە.\n' +
-      'عذراً، حدث خطأ. حاول مرة أخرى.\n' +
-      'Sorry, an error occurred. Please try again.'
-    );
+    console.error(`❌ [${senderId}] failed:`, err.message);
+    await sendInstagramReply(senderId, L.errorMsg);
   } finally {
-    // Always clean up conversation from memory
     conversations.delete(senderId);
-    console.log(`🗑️ [${senderId}] conversation cleared from memory`);
+    console.log(`🗑️ [${senderId}] session cleared`);
   }
 }
 
