@@ -52,31 +52,37 @@ class SessionStore {
     }
   }
 
-  // ─── DUPLICATE GUARD (PHONES) ─────────────────────────────────────────────
-  // We keep phone numbers for 12 hours (43200 seconds) to block duplicates
-  async recordPhone(phone) {
-    // Standardize phone number by removing spaces
+  // ─── DUPLICATE GUARD (PHONES & PRODUCTS) ────────────────────────────────
+  // We keep phone+product combo for 12 hours (43200 seconds) to block exact duplicates
+  async recordPhone(phone, product = '') {
+    // Standardize phone and product by removing spaces
     const cleanPhone = phone.replace(/\s+/g, '');
+    const cleanProduct = product.replace(/\s+/g, '').toLowerCase();
+    const key = `phone:${cleanPhone}:prod:${cleanProduct}`;
+    
     if (this.redisClient) {
-      await this.redisClient.setEx(`phone:${cleanPhone}`, 43200, 'ordered');
+      await this.redisClient.setEx(key, 43200, 'ordered');
     } else {
-      this.phonesMemory.set(cleanPhone, Date.now());
+      this.phonesMemory.set(key, Date.now());
       // Lazy cleanup for local memory
-      setTimeout(() => this.phonesMemory.delete(cleanPhone), 43200 * 1000);
+      setTimeout(() => this.phonesMemory.delete(key), 43200 * 1000);
     }
   }
 
-  async hasOrderedRecently(phone) {
+  async hasOrderedRecently(phone, product = '') {
     const cleanPhone = phone.replace(/\s+/g, '');
+    const cleanProduct = product.replace(/\s+/g, '').toLowerCase();
+    const key = `phone:${cleanPhone}:prod:${cleanProduct}`;
+    
     if (this.redisClient) {
-      const exists = await this.redisClient.get(`phone:${cleanPhone}`);
+      const exists = await this.redisClient.get(key);
       return !!exists;
     } else {
-      const timestamp = this.phonesMemory.get(cleanPhone);
+      const timestamp = this.phonesMemory.get(key);
       if (!timestamp) return false;
       const hoursPassed = (Date.now() - timestamp) / (1000 * 60 * 60);
       if (hoursPassed > 12) {
-        this.phonesMemory.delete(cleanPhone);
+        this.phonesMemory.delete(key);
         return false;
       }
       return true;

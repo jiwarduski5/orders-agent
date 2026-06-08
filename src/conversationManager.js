@@ -577,7 +577,7 @@ async function handleNewMessage(senderId, messageText, messageId) {
     }
 
     // ── DUPLICATE GUARD ──
-    const isDuplicate = await sessionStore.hasOrderedRecently(parsed.phone);
+    const isDuplicate = await sessionStore.hasOrderedRecently(parsed.phone, parsed.product);
     if (isDuplicate) {
       console.log(`⚠️ [${senderId}] duplicate phone blocked: ${parsed.phone}`);
       const duplicateMsg = 
@@ -664,8 +664,8 @@ async function finalizeAllOrders(senderId, convo, L) {
       const orderNumber = await appendOrder(sheetOrder);
       if (i === 0) firstOrderNumber = orderNumber;
       
-      // Record phone number in duplicate guard
-      await sessionStore.recordPhone(order.phone);
+      // Record phone number and product in duplicate guard
+      await sessionStore.recordPhone(order.phone, order.product);
       
       console.log(`💾 [${senderId}] order #${i + 1} saved as row #${orderNumber}`);
     }
