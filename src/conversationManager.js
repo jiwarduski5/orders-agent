@@ -21,14 +21,16 @@ const LANG = {
   // ── BADINI KURDISH ──────────────────────────────────────────────────────────
   ku: {
     langSelected:
-      '',
+      'زمانێ کوردی هەڵبژارت!\n' +
+      'بخێرهاتی!',
 
     welcome:
-      'بخێرهاتی دێ چاوا شێم هاریکاریا تەکەم؟ \n' +
-      '1: داخازیەکێ بکە \n' +
-      '2: پەیوەندیێ بمە بکە \n' +
+      'بخێرهاتی دێ چاوا شێم هاریکاریا تەکەم؟ \n\n' +
       '─────────────────────\n' +
-      '  ١ یان ٢ بهەڵبژێرە بو بەردەوامبونێ',
+      '1 داخازیەکێ بکە \n' +
+      '2 پەیوەندیێ بمە بکە \n' +
+      '─────────────────────\n' +
+      '  ١ یان ٢ بنڤیسە',
 
     orderForm:
       ' گەلەک باشە! ئەڤێ فورمێ پر بکە و بۆمە بنێرە \n\n' +
@@ -42,20 +44,21 @@ const LANG = {
     anotherOrder:
       'داخازیا تە هاتە وەرگرتن!\n' +
       'تە دڤێت داخازیەکا دیژی بکەی؟ \n\n' +
-      '1: بەلی\n' +
-      '2: نەخێر',
+      '1 بەلی\n' +
+      '2 نەخێر',
 
     thankYou:
       'سوپاسیا تە دکەین!\n' +
       'داخازیاتە سەرکەفتیانە هاتە وەرگرتن \n' +
-      'لنێزیک دێ پەیوەندیێ بتەکەین',
+      'لنێزیک دێ پەیوەندیێ بتەکەین\n\n' +
+      'ئەگەر تە دڤێت داخازیەکا نوی بکەی، ژمارە 1 بنڤیسە',
 
     humanMode:
       'بێ گومان! تیما مە دێ بەرسڤا تەبدەت \n' +
       ' چاڤەڕێ بە...',
 
     invalidChoice:
-      '١ یان ٢ بهەڵبژێرە ',
+      '١ یان ٢ هەڵبژێرە ',
 
     invalidForm:
       'فورمێ بدروستی پر بکە و دوبارە بنێرە \n\n' +
@@ -74,7 +77,7 @@ const LANG = {
       'تێبینی:\n',
 
     invalidYesNo:
-      '١ یان ٢ بهەڵبژێرە ',
+      '١ یان ٢ بنڤیسە ',
 
     restart:
       'باشە! دوبارە دەستپێدەکەین',
@@ -128,7 +131,8 @@ const LANG = {
     thankYou:
       ' شكراً جزيلاً!\n' +
       'تم استلام طلباتك بنجاح \n' +
-      'سنتواصل معك قريباً ',
+      'سنتواصل معك قريباً \n\n' +
+      'إذا كنت تريد البدء من جديد، أرسل رقم 1',
 
     humanMode:
       ' بالتأكيد! سيرد عليك أحد من فريقنا قريباً \n' +
@@ -212,7 +216,8 @@ const LANG = {
     thankYou:
       ' Thank you so much!\n' +
       'All your orders have been received \n' +
-      'We will contact you soon ',
+      'We will contact you soon \n\n' +
+      'If you want to start again, send number 1',
 
     humanMode:
       ' Of course! Our team will reply to you shortly \n' +
@@ -267,9 +272,10 @@ const LANG = {
 // ─── LANGUAGE SELECTION MENU (shown to EVERY new user) ────────────────────────
 const LANG_SELECT_MSG =
   'Please select your language\n\n' +
-  '1: Kurdish\n' +
-  '2: Arabic\n' +
-  '3: English\n';
+  'کوردی\n' +
+  'عربي\n' +
+  'English\n' +
+  '1 / 2 / 3';
 
 // ─── CONVERSATIONS STORE ──────────────────────────────────────────────────────
 const sessionStore = require('./sessionStore');
@@ -490,6 +496,24 @@ async function handleNewMessage(senderId, messageText, messageId) {
     return;
   }
 
+  // ── STATE: finished ─────────────────────────────────────────────────────────
+  if (convo.state === 'finished') {
+    const t = text.trim();
+    if (t === '1' || t === '١' || isRestart(t)) {
+      convo.state = 'menu';
+      convo.orders = [];
+      console.log(`🔄 [${senderId}] restarted from finished`);
+      await sessionStore.set(senderId, convo);
+      const L = getLangPack(convo);
+      await typingDelay(L.welcome);
+      await sendInstagramReply(senderId, L.welcome);
+    } else {
+      console.log(`🔕 [${senderId}] finished mode — bot silent for "${text}"`);
+      await sessionStore.set(senderId, convo); // just save messageId
+    }
+    return;
+  }
+
   // ── STATE: lang ──────────────────────────────────────────────────────────────
   if (convo.state === 'lang') {
     const chosen = getLangChoice(text);
@@ -668,8 +692,11 @@ async function finalizeAllOrders(senderId, convo, L) {
     console.error(`❌ [${senderId}] failed:`, err.message);
     await sendInstagramReply(senderId, L.errorMsg);
   } finally {
-    await sessionStore.delete(senderId);
-    console.log(`🗑️ [${senderId}] session cleared`);
+    // Instead of deleting, set state to finished so bot stays silent
+    convo.state = 'finished';
+    convo.orders = [];
+    await sessionStore.set(senderId, convo);
+    console.log(`🏁 [${senderId}] session moved to finished state (waiting for 1)`);
   }
 }
 
