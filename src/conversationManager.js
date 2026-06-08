@@ -21,16 +21,14 @@ const LANG = {
   // ── BADINI KURDISH ──────────────────────────────────────────────────────────
   ku: {
     langSelected:
-      'زمانێ کوردی هەڵبژارت!\n' +
-      'بخێرهاتی!',
+      ' ',
 
     welcome:
-      'بخێرهاتی دێ چاوا شێم هاریکاریا تەکەم؟ \n\n' +
+      'بخێرهاتی دێ چاوا شێم هاریکاریا تەکەم؟ \n' +
+      '1: داخازیەکێ بکە \n' +
+      '2: پەیوەندیێ بمە بکە \n' +
       '─────────────────────\n' +
-      '1 داخازیەکێ بکە \n' +
-      '2 پەیوەندیێ بمە بکە \n' +
-      '─────────────────────\n' +
-      '  ١ یان ٢ بنڤیسە',
+      '  ١ یان ٢ بهەڵبژێرە بو بەردەوامبونێ',
 
     orderForm:
       ' گەلەک باشە! ئەڤێ فورمێ پر بکە و بۆمە بنێرە \n\n' +
@@ -44,14 +42,14 @@ const LANG = {
     anotherOrder:
       'داخازیا تە هاتە وەرگرتن!\n' +
       'تە دڤێت داخازیەکا دیژی بکەی؟ \n\n' +
-      '1 بەلی\n' +
-      '2 نەخێر',
+      '1: بەلی\n' +
+      '2: نەخێر',
 
     thankYou:
       'سوپاسیا تە دکەین!\n' +
       'داخازیاتە سەرکەفتیانە هاتە وەرگرتن \n' +
       'لنێزیک دێ پەیوەندیێ بتەکەین\n\n' +
-      'ئەگەر تە دڤێت داخازیەکا نوی بکەی، ژمارە 1 بنڤیسە',
+      'ئەگەر تە دڤێت داخازیەکا نوی بکەی، ژمارە 1 بهەلبژێرە',
 
     humanMode:
       'بێ گومان! تیما مە دێ بەرسڤا تەبدەت \n' +
@@ -77,7 +75,7 @@ const LANG = {
       'تێبینی:\n',
 
     invalidYesNo:
-      '١ یان ٢ بنڤیسە ',
+      '١ یان ٢ بهەڵبژێرە ',
 
     restart:
       'باشە! دوبارە دەستپێدەکەین',
@@ -107,8 +105,8 @@ const LANG = {
     welcome:
       ' مرحباً! كيف نقدر نساعدك؟ \n\n' +
       '─────────────────────\n' +
-      '1  أريد أطلب منتج \n' +
-      '2  أريد أتواصل مع الفريق \n' +
+      '1:  أريد أطلب منتج \n' +
+      '2:  أريد أتواصل مع الفريق \n' +
       '─────────────────────\n' +
       ' اختر 1 أو 2',
 
@@ -125,8 +123,8 @@ const LANG = {
     anotherOrder:
       ' تم استلام طلبك!\n' +
       'هل تريد إضافة طلب آخر؟ \n\n' +
-      '1 نعم\n' +
-      '2 لا',
+      '1: نعم\n' +
+      '2: لا',
 
     thankYou:
       ' شكراً جزيلاً!\n' +
@@ -192,8 +190,8 @@ const LANG = {
     welcome:
       ' Hello! How can we help you today? \n\n' +
       '─────────────────────\n' +
-      '1  I want to place an order \n' +
-      '2  I want to contact the team \n' +
+      '1:  I want to place an order \n' +
+      '2:  I want to contact the team \n' +
       '─────────────────────\n' +
       ' Reply with 1 or 2',
 
@@ -210,8 +208,8 @@ const LANG = {
     anotherOrder:
       ' Your order has been received!\n' +
       'Would you like to add another order? \n\n' +
-      '1 Yes\n' +
-      '2 No',
+      '1: Yes\n' +
+      '2: No',
 
     thankYou:
       ' Thank you so much!\n' +
@@ -271,11 +269,10 @@ const LANG = {
 
 // ─── LANGUAGE SELECTION MENU (shown to EVERY new user) ────────────────────────
 const LANG_SELECT_MSG =
-  'Please select your language\n\n' +
-  'کوردی\n' +
-  'عربي\n' +
-  'English\n' +
-  '1 / 2 / 3';
+  'Please select your language\n' +
+  '1: Kurdish\n' +
+  '2: Arabic\n' +
+  '3: English';
 
 // ─── CONVERSATIONS STORE ──────────────────────────────────────────────────────
 const sessionStore = require('./sessionStore');
