@@ -27,7 +27,6 @@ const LANG = {
       'بخێرهاتی دێ چاوا شێم هاریکاریا تەکەم؟ \n' +
       '1: داخازیەکێ بکە \n' +
       '2: پەیوەندیێ بمە بکە \n' +
-      '─────────────────────\n' +
       '  ١ یان ٢ بهەڵبژێرە بو بەردەوامبونێ',
 
     orderForm:
@@ -269,7 +268,7 @@ const LANG = {
 
 // ─── LANGUAGE SELECTION MENU (shown to EVERY new user) ────────────────────────
 const LANG_SELECT_MSG =
-  'Please select your language\n' +
+  'زمانێ بهەلبژێرە\n' +
   '1: Kurdish\n' +
   '2: Arabic\n' +
   '3: English';
