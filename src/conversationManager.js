@@ -780,21 +780,21 @@ async function finalizeAllOrders(pageId, senderId, convo, L) {
     // Summary to customer
     const summary = buildSummary(convo.orders, L);
     await typingDelay(summary);
-    await sendInstagramReply(senderId, summary);
+    await sendInstagramReply(pageId, senderId, summary);
 
     await new Promise(resolve => setTimeout(resolve, 800));
-    await sendInstagramReply(senderId, L.thankYou);
+    await sendInstagramReply(pageId, senderId, L.thankYou);
 
     console.log(`✅ [${senderId}] all ${convo.orders.length} order(s) finalized`);
 
   } catch (err) {
     console.error(`❌ [${senderId}] failed:`, err.message);
-    await sendInstagramReply(senderId, L.errorMsg);
+    await sendInstagramReply(pageId, senderId, L.errorMsg);
   } finally {
     // Instead of deleting, set state to finished so bot stays silent
     convo.state = 'finished';
     convo.orders = [];
-    await sessionStore.set(senderId, convo);
+    await sessionStore.set(pageId, senderId, convo);
     console.log(`🏁 [${senderId}] session moved to finished state (waiting for 1)`);
   }
 }
