@@ -8,6 +8,7 @@
  *   lang       → Show language selection (FIRST step)
  *   menu       → Show welcome menu, wait for 1 or 2
  *   ordering   → Send form, wait for filled form
+ *   ordering_additional → Short form for 2nd+ orders (product + notes only)
  *   confirm    → Ask if user wants another order (yes/no)
  *   human      → Bot is completely silent, owner handles manually
  */
@@ -36,7 +37,11 @@ const LANG = {
       'ناڤونیشان:\n' +
       'تە چجورە بەرهەم دڤێت:\n' +
       'تێبینی:\n',
-    
+
+    additionalOrderForm:
+      'گەلەک باشە \n' +
+      'تە چجورە بەرهەم دڤێت:\n' +
+      'تێبینی:\n',
 
     anotherOrder:
       'داخازیا تە هاتە وەرگرتن!\n' +
@@ -118,6 +123,11 @@ const LANG = {
       ' المنتج المطلوب:\n' +
       ' ملاحظات:\n' +
       '══════════════════════',
+
+    additionalOrderForm:
+      ' ممتاز! \n\n' +
+      ' المنتج المطلوب:\n' +
+      ' ملاحظات:\n',
 
     anotherOrder:
       ' تم استلام طلبك!\n' +
@@ -203,6 +213,11 @@ const LANG = {
       ' Product you want:\n' +
       ' Notes:\n' +
       '══════════════════════',
+
+    additionalOrderForm:
+      ' Great! \n\n' +
+      ' Product you want:\n' +
+      ' Notes:\n',
 
     anotherOrder:
       ' Your order has been received!\n' +
@@ -384,6 +399,48 @@ function parseFilledForm(text) {
 
   const valid = result.name.length > 0 && result.phone.length > 0 && result.product.length > 0;
   return valid ? result : null;
+}
+
+function parseAdditionalForm(text) {
+  const lines = text.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+
+  const labels = {
+    product: [
+      '📦 بەرهەمێ دڤێت', '📦 المنتج المطلوب', '📦 Product you want',
+      '📦 بەرهەم', '📦 المنتج', '📦 product',
+      'تە چ جورە بەرهەم دڤێت', 'تە چجورە بەرهەم دڤێت', 'بەرهەمێ دڤێت', 'بەرهەم',
+      'المنتج المطلوب', 'المنتج', 'منتج',
+      'Product you want', 'product you want', 'product',
+    ],
+    notes: [
+      '📝 تێبینی', '📝 ملاحظات', '📝 Notes', '📝 notes',
+      'تێبینی', 'تیبینی', 'ملاحظات', 'ملاحظه', 'notes', 'note',
+    ],
+  };
+
+  const result = { product: '', notes: '' };
+
+  for (const line of lines) {
+    for (const [field, variants] of Object.entries(labels)) {
+      for (const label of variants) {
+        const regex = new RegExp(`^${escapeRegex(label)}\\s*[:\\/]?\\s*(.*)`, 'i');
+        const match = line.match(regex);
+        if (match && match[1].trim().length > 0 && !result[field]) {
+          result[field] = match[1].trim();
+          break;
+        }
+      }
+    }
+  }
+
+  // Positional fallback: if no labels found, first line = product, second = notes
+  const hasAnyLabel = Object.values(result).some(v => v.length > 0);
+  if (!hasAnyLabel && lines.length >= 1) {
+    result.product = lines[0] || '';
+    result.notes   = lines[1] || '';
+  }
+
+  return result.product.length > 0 ? result : null;
 }
 
 function escapeRegex(str) {
@@ -606,14 +663,60 @@ async function handleNewMessage(senderId, messageText, messageId) {
     return;
   }
 
+  // ── STATE: ordering_additional (2nd+ orders — short form) ──────────────────
+  if (convo.state === 'ordering_additional') {
+    const additionalParsed = parseAdditionalForm(text);
+
+    if (!additionalParsed) {
+      console.log(`⚠️ [${senderId}] additional form invalid`);
+      await sessionStore.set(senderId, convo);
+      await typingDelay(L.additionalOrderForm);
+      await sendInstagramReply(senderId, L.additionalOrderForm);
+      return;
+    }
+
+    // Copy name, phone, address from the first order
+    const firstOrder = convo.orders[0];
+
+    // ── DUPLICATE GUARD ──
+    const isDuplicate = await sessionStore.hasOrderedRecently(firstOrder.phone, additionalParsed.product);
+    if (isDuplicate) {
+      console.log(`⚠️ [${senderId}] duplicate product blocked: ${additionalParsed.product}`);
+      const duplicateMsg = 
+        convo.lang === 'ku' ? 'ببورە، ئەڤ بەرهەمە پێشتر داخازی کریە.' :
+        convo.lang === 'ar' ? 'عذراً، هذا المنتج تم طلبه مسبقاً.' :
+        'Sorry, this product has already been ordered.';
+      
+      await sessionStore.set(senderId, convo);
+      await typingDelay(duplicateMsg);
+      await sendInstagramReply(senderId, duplicateMsg);
+      return;
+    }
+
+    convo.orders.push({
+      name:    firstOrder.name,
+      phone:   firstOrder.phone,
+      address: firstOrder.address,
+      product: additionalParsed.product,
+      notes:   additionalParsed.notes || '—',
+    });
+
+    console.log(`✅ [${senderId}] additional order #${convo.orders.length} collected`);
+    convo.state = 'confirm';
+    await sessionStore.set(senderId, convo);
+    await typingDelay(L.anotherOrder);
+    await sendInstagramReply(senderId, L.anotherOrder);
+    return;
+  }
+
   // ── STATE: confirm ───────────────────────────────────────────────────────────
   if (convo.state === 'confirm') {
     if (isYes(text)) {
-      convo.state = 'ordering';
-      console.log(`➕ [${senderId}] wants another order`);
+      convo.state = 'ordering_additional';
+      console.log(`➕ [${senderId}] wants another order (short form)`);
       await sessionStore.set(senderId, convo);
-      await typingDelay(L.orderForm);
-      await sendInstagramReply(senderId, L.orderForm);
+      await typingDelay(L.additionalOrderForm);
+      await sendInstagramReply(senderId, L.additionalOrderForm);
 
     } else if (isNo(text)) {
       console.log(`🏁 [${senderId}] done — saving ${convo.orders.length} order(s)`);
