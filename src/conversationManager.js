@@ -493,10 +493,10 @@ function buildTelegramNotification(senderId, ordersList, orderStartNumber, lang)
 
 // ─── MAIN HANDLER ─────────────────────────────────────────────────────────────
 
-async function handleNewMessage(senderId, messageText, messageId) {
+async function handleNewMessage(pageId, senderId, messageText, messageId) {
   if (!messageText || !messageText.trim()) return;
 
-  let convo = await sessionStore.get(senderId);
+  let convo = await sessionStore.get(pageId, senderId);
   if (!convo) {
     convo = {
       state: 'lang',   // ← ALWAYS starts at lang selection
@@ -504,7 +504,7 @@ async function handleNewMessage(senderId, messageText, messageId) {
       orders: [],
       messageIds: new Set(),
     };
-    await sessionStore.set(senderId, convo);
+    await sessionStore.set(pageId, senderId, convo);
     console.log(`💬 New session started: ${senderId}`);
   }
 
@@ -525,9 +525,9 @@ async function handleNewMessage(senderId, messageText, messageId) {
     convo.lang  = null;
     convo.orders = [];
     console.log(`🔄 [${senderId}] restarted`);
-    await sessionStore.set(senderId, convo);
+    await sessionStore.set(pageId, senderId, convo);
     await typingDelay(LANG_SELECT_MSG);
-    await sendInstagramReply(senderId, LANG_SELECT_MSG);
+    await sendInstagramReply(pageId, senderId, LANG_SELECT_MSG);
     return;
   }
 
@@ -535,16 +535,16 @@ async function handleNewMessage(senderId, messageText, messageId) {
   if (isCancel(text)) {
     const L = convo.lang ? getLangPack(convo) : LANG.ku;
     const cancelText = L.cancelMsg;
-    await sessionStore.delete(senderId);
+    await sessionStore.delete(pageId, senderId);
     console.log(`❌ [${senderId}] cancelled their order`);
     await typingDelay(cancelText);
-    await sendInstagramReply(senderId, cancelText);
+    await sendInstagramReply(pageId, senderId, cancelText);
     return;
   }
 
   // ── HUMAN MODE — complete silence ──────────────────────────────────────────
   if (convo.state === 'human') {
-    await sessionStore.set(senderId, convo); // save messageId
+    await sessionStore.set(pageId, senderId, convo); // save messageId
     console.log(`🔕 [${senderId}] in human mode — bot silent`);
     return;
   }
@@ -556,13 +556,13 @@ async function handleNewMessage(senderId, messageText, messageId) {
       convo.state = 'menu';
       convo.orders = [];
       console.log(`🔄 [${senderId}] restarted from finished`);
-      await sessionStore.set(senderId, convo);
+      await sessionStore.set(pageId, senderId, convo);
       const L = getLangPack(convo);
       await typingDelay(L.welcome);
-      await sendInstagramReply(senderId, L.welcome);
+      await sendInstagramReply(pageId, senderId, L.welcome);
     } else {
       console.log(`🔕 [${senderId}] finished mode — bot silent for "${text}"`);
-      await sessionStore.set(senderId, convo); // just save messageId
+      await sessionStore.set(pageId, senderId, convo); // just save messageId
     }
     return;
   }
@@ -576,15 +576,15 @@ async function handleNewMessage(senderId, messageText, messageId) {
       convo.state = 'menu';
       const L = getLangPack(convo);
       console.log(`🌍 [${senderId}] selected lang: ${chosen}`);
-      await sessionStore.set(senderId, convo);
+      await sessionStore.set(pageId, senderId, convo);
       await typingDelay(L.langSelected);
-      await sendInstagramReply(senderId, L.langSelected + '\n\n' + L.welcome);
+      await sendInstagramReply(pageId, senderId, L.langSelected + '\n\n' + L.welcome);
     } else {
       // Any message that is not 1/2/3 → show language menu
       console.log(`🌍 [${senderId}] showing language menu`);
-      await sessionStore.set(senderId, convo);
+      await sessionStore.set(pageId, senderId, convo);
       await typingDelay(LANG_SELECT_MSG);
-      await sendInstagramReply(senderId, LANG_SELECT_MSG);
+      await sendInstagramReply(pageId, senderId, LANG_SELECT_MSG);
     }
     return;
   }
@@ -598,22 +598,22 @@ async function handleNewMessage(senderId, messageText, messageId) {
     if (choice === '1') {
       convo.state = 'ordering';
       console.log(`🛒 [${senderId}] chose Order`);
-      await sessionStore.set(senderId, convo);
+      await sessionStore.set(pageId, senderId, convo);
       await typingDelay(L.orderForm);
-      await sendInstagramReply(senderId, L.orderForm);
+      await sendInstagramReply(pageId, senderId, L.orderForm);
 
     } else if (choice === '2') {
       convo.state = 'human';
       console.log(`💬 [${senderId}] chose Human mode`);
-      await sessionStore.set(senderId, convo);
+      await sessionStore.set(pageId, senderId, convo);
       await typingDelay(L.humanMode);
-      await sendInstagramReply(senderId, L.humanMode);
+      await sendInstagramReply(pageId, senderId, L.humanMode);
 
     } else {
       console.log(`📋 [${senderId}] showing main menu`);
-      await sessionStore.set(senderId, convo);
+      await sessionStore.set(pageId, senderId, convo);
       await typingDelay(L.welcome);
-      await sendInstagramReply(senderId, L.welcome);
+      await sendInstagramReply(pageId, senderId, L.welcome);
     }
     return;
   }
@@ -626,14 +626,14 @@ async function handleNewMessage(senderId, messageText, messageId) {
       const hasAnyContent = text.length > 20;
       const reply = hasAnyContent ? L.missingFields : L.invalidForm;
       console.log(`⚠️ [${senderId}] form invalid`);
-      await sessionStore.set(senderId, convo);
+      await sessionStore.set(pageId, senderId, convo);
       await typingDelay(reply);
-      await sendInstagramReply(senderId, reply);
+      await sendInstagramReply(pageId, senderId, reply);
       return;
     }
 
     // ── DUPLICATE GUARD ──
-    const isDuplicate = await sessionStore.hasOrderedRecently(parsed.phone, parsed.product);
+    const isDuplicate = await sessionStore.hasOrderedRecently(pageId, parsed.phone, parsed.product);
     if (isDuplicate) {
       console.log(`⚠️ [${senderId}] duplicate phone blocked: ${parsed.phone}`);
       const duplicateMsg = 
@@ -641,9 +641,9 @@ async function handleNewMessage(senderId, messageText, messageId) {
         convo.lang === 'ar' ? 'عذراً، هذا الرقم قام بطلب مسبقاً. يرجى الانتظار حتى نتواصل معك.' :
         'Sorry, an order has already been placed with this phone number recently. Please wait for our team to contact you.';
       
-      await sessionStore.set(senderId, convo);
+      await sessionStore.set(pageId, senderId, convo);
       await typingDelay(duplicateMsg);
-      await sendInstagramReply(senderId, duplicateMsg);
+      await sendInstagramReply(pageId, senderId, duplicateMsg);
       return;
     }
 
@@ -657,9 +657,9 @@ async function handleNewMessage(senderId, messageText, messageId) {
 
     console.log(`✅ [${senderId}] order #${convo.orders.length} collected`);
     convo.state = 'confirm';
-    await sessionStore.set(senderId, convo);
+    await sessionStore.set(pageId, senderId, convo);
     await typingDelay(L.anotherOrder);
-    await sendInstagramReply(senderId, L.anotherOrder);
+    await sendInstagramReply(pageId, senderId, L.anotherOrder);
     return;
   }
 
@@ -669,9 +669,9 @@ async function handleNewMessage(senderId, messageText, messageId) {
 
     if (!additionalParsed) {
       console.log(`⚠️ [${senderId}] additional form invalid`);
-      await sessionStore.set(senderId, convo);
+      await sessionStore.set(pageId, senderId, convo);
       await typingDelay(L.additionalOrderForm);
-      await sendInstagramReply(senderId, L.additionalOrderForm);
+      await sendInstagramReply(pageId, senderId, L.additionalOrderForm);
       return;
     }
 
@@ -679,7 +679,7 @@ async function handleNewMessage(senderId, messageText, messageId) {
     const firstOrder = convo.orders[0];
 
     // ── DUPLICATE GUARD ──
-    const isDuplicate = await sessionStore.hasOrderedRecently(firstOrder.phone, additionalParsed.product);
+    const isDuplicate = await sessionStore.hasOrderedRecently(pageId, firstOrder.phone, additionalParsed.product);
     if (isDuplicate) {
       console.log(`⚠️ [${senderId}] duplicate product blocked: ${additionalParsed.product}`);
       const duplicateMsg = 
@@ -687,9 +687,9 @@ async function handleNewMessage(senderId, messageText, messageId) {
         convo.lang === 'ar' ? 'عذراً، هذا المنتج تم طلبه مسبقاً.' :
         'Sorry, this product has already been ordered.';
       
-      await sessionStore.set(senderId, convo);
+      await sessionStore.set(pageId, senderId, convo);
       await typingDelay(duplicateMsg);
-      await sendInstagramReply(senderId, duplicateMsg);
+      await sendInstagramReply(pageId, senderId, duplicateMsg);
       return;
     }
 
@@ -703,9 +703,9 @@ async function handleNewMessage(senderId, messageText, messageId) {
 
     console.log(`✅ [${senderId}] additional order #${convo.orders.length} collected`);
     convo.state = 'confirm';
-    await sessionStore.set(senderId, convo);
+    await sessionStore.set(pageId, senderId, convo);
     await typingDelay(L.anotherOrder);
-    await sendInstagramReply(senderId, L.anotherOrder);
+    await sendInstagramReply(pageId, senderId, L.anotherOrder);
     return;
   }
 
@@ -714,20 +714,20 @@ async function handleNewMessage(senderId, messageText, messageId) {
     if (isYes(text)) {
       convo.state = 'ordering_additional';
       console.log(`➕ [${senderId}] wants another order (short form)`);
-      await sessionStore.set(senderId, convo);
+      await sessionStore.set(pageId, senderId, convo);
       await typingDelay(L.additionalOrderForm);
-      await sendInstagramReply(senderId, L.additionalOrderForm);
+      await sendInstagramReply(pageId, senderId, L.additionalOrderForm);
 
     } else if (isNo(text)) {
       console.log(`🏁 [${senderId}] done — saving ${convo.orders.length} order(s)`);
       // We do not save state here, finalizeAllOrders handles cleanup
-      await finalizeAllOrders(senderId, convo, L);
+      await finalizeAllOrders(pageId, senderId, convo, L);
 
     } else {
       console.log(`⚠️ [${senderId}] invalid yes/no`);
-      await sessionStore.set(senderId, convo);
+      await sessionStore.set(pageId, senderId, convo);
       await typingDelay(L.invalidYesNo);
-      await sendInstagramReply(senderId, L.invalidYesNo);
+      await sendInstagramReply(pageId, senderId, L.invalidYesNo);
     }
     return;
   }
@@ -735,7 +735,7 @@ async function handleNewMessage(senderId, messageText, messageId) {
 
 // ─── FINALIZE ALL ORDERS ──────────────────────────────────────────────────────
 
-async function finalizeAllOrders(senderId, convo, L) {
+async function finalizeAllOrders(pageId, senderId, convo, L) {
   const now = new Date();
   const date = now.toLocaleDateString('ar-IQ', { year: 'numeric', month: '2-digit', day: '2-digit' });
   const time = now.toLocaleTimeString('ar-IQ', { hour: '2-digit', minute: '2-digit' });
@@ -763,11 +763,11 @@ async function finalizeAllOrders(senderId, convo, L) {
         status: '🟡 جديد',
       };
 
-      const orderNumber = await appendOrder(sheetOrder);
+      const orderNumber = await appendOrder(pageId, sheetOrder);
       if (i === 0) firstOrderNumber = orderNumber;
       
       // Record phone number and product in duplicate guard
-      await sessionStore.recordPhone(order.phone, order.product);
+      await sessionStore.recordPhone(pageId, order.phone, order.product);
       
       console.log(`💾 [${senderId}] order #${i + 1} saved as row #${orderNumber}`);
     }
@@ -775,7 +775,7 @@ async function finalizeAllOrders(senderId, convo, L) {
     // Telegram notification
     const telegramMsg = buildTelegramNotification(senderId, convo.orders, firstOrderNumber, convo.lang);
     const { sendTelegram } = require('./telegramService');
-    await sendTelegram(telegramMsg);
+    await sendTelegram(pageId, telegramMsg);
 
     // Summary to customer
     const summary = buildSummary(convo.orders, L);

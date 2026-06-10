@@ -9,6 +9,7 @@
  */
 
 const { google } = require('googleapis');
+const { getSheetId } = require('./clientManager');
 
 // ─── Auth Setup ───────────────────────────────────────────────────────────────
 function getAuth() {
@@ -75,10 +76,10 @@ async function getNextRowNumber(sheets, spreadsheetId) {
  * Appends a new order row to the Google Sheet
  * @param {object} order - Parsed order object from orderParser
  */
-async function appendOrder(order) {
+async function appendOrder(pageId, order) {
   const auth = getAuth();
   const sheets = google.sheets({ version: 'v4', auth });
-  const spreadsheetId = process.env.SPREADSHEET_ID || process.env.GOOGLE_SHEET_ID;
+  const spreadsheetId = getSheetId(pageId);
 
   try {
     await ensureHeader(sheets, spreadsheetId);

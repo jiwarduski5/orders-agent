@@ -18,9 +18,10 @@ class SessionStore {
   }
 
   // ─── CONVERSATIONS ────────────────────────────────────────────────────────
-  async get(userId) {
+  async get(pageId, userId) {
+    const key = `convo:${pageId}:${userId}`;
     if (this.redisClient) {
-      const data = await this.redisClient.get(`convo:${userId}`);
+      const data = await this.redisClient.get(key);
       if (data) {
         const parsed = JSON.parse(data);
         // Map messageIds back to a Set
@@ -29,36 +30,38 @@ class SessionStore {
       }
       return null;
     } else {
-      return this.memory.get(userId) || null;
+      return this.memory.get(key) || null;
     }
   }
 
-  async set(userId, data) {
+  async set(pageId, userId, data) {
+    const key = `convo:${pageId}:${userId}`;
     if (this.redisClient) {
       // Convert Set to Array before JSON stringify
       const toSave = { ...data, messageIds: Array.from(data.messageIds || []) };
       // Expire session after 24 hours (86400 seconds)
-      await this.redisClient.setEx(`convo:${userId}`, 86400, JSON.stringify(toSave));
+      await this.redisClient.setEx(key, 86400, JSON.stringify(toSave));
     } else {
-      this.memory.set(userId, data);
+      this.memory.set(key, data);
     }
   }
 
-  async delete(userId) {
+  async delete(pageId, userId) {
+    const key = `convo:${pageId}:${userId}`;
     if (this.redisClient) {
-      await this.redisClient.del(`convo:${userId}`);
+      await this.redisClient.del(key);
     } else {
-      this.memory.delete(userId);
+      this.memory.delete(key);
     }
   }
 
   // ─── DUPLICATE GUARD (PHONES & PRODUCTS) ────────────────────────────────
   // We keep phone+product combo for 12 hours (43200 seconds) to block exact duplicates
-  async recordPhone(phone, product = '') {
+  async recordPhone(pageId, phone, product = '') {
     // Standardize phone and product by removing spaces
     const cleanPhone = phone.replace(/\s+/g, '');
     const cleanProduct = product.replace(/\s+/g, '').toLowerCase();
-    const key = `phone:${cleanPhone}:prod:${cleanProduct}`;
+    const key = `phone:${pageId}:${cleanPhone}:prod:${cleanProduct}`;
     
     if (this.redisClient) {
       await this.redisClient.setEx(key, 43200, 'ordered');
@@ -69,10 +72,10 @@ class SessionStore {
     }
   }
 
-  async hasOrderedRecently(phone, product = '') {
+  async hasOrderedRecently(pageId, phone, product = '') {
     const cleanPhone = phone.replace(/\s+/g, '');
     const cleanProduct = product.replace(/\s+/g, '').toLowerCase();
-    const key = `phone:${cleanPhone}:prod:${cleanProduct}`;
+    const key = `phone:${pageId}:${cleanPhone}:prod:${cleanProduct}`;
     
     if (this.redisClient) {
       const exists = await this.redisClient.get(key);

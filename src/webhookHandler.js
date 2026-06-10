@@ -48,7 +48,7 @@ function verifyMetaSignature(req) {
 
 // ─── Process a single comment (immediate, no buffering) ───────────────────────
 
-async function processComment(commentId, commentText, username, postId) {
+async function processComment(pageId, commentId, commentText, username, postId) {
   if (processedIds.has(commentId)) {
     console.log(`ℹ️  Comment ${commentId} already processed. Skipping.`);
     return;
@@ -74,8 +74,8 @@ async function processComment(commentId, commentText, username, postId) {
   const order = parseOrder(commentText, username, postId);
 
   try {
-    const orderNumber = await appendOrder(order);
-    await sendOrderNotification(order, orderNumber);
+    const orderNumber = await appendOrder(pageId, order);
+    await sendOrderNotification(pageId, order, orderNumber);
     console.log(`✅ Comment Order #${orderNumber} fully processed.`);
   } catch (error) {
     console.error(`❌ Error processing comment order:`, error.message);
@@ -130,6 +130,7 @@ async function handleWebhookEvent(req, res) {
       if (change.field === 'comments') {
         const value = change.value;
         await processComment(
+          entry.id,
           value.id,
           value.text || '',
           value.from?.username || value.from?.id,
@@ -144,9 +145,10 @@ async function handleWebhookEvent(req, res) {
         const messageId = messaging.message.mid;
         const messageText = messaging.message.text || '';
         const senderId = messaging.sender?.id;
+        const pageId = entry.id;
 
         if (senderId && messageText) {
-          handleNewMessage(senderId, messageText, messageId);
+          handleNewMessage(pageId, senderId, messageText, messageId);
         }
       }
     }
@@ -156,9 +158,10 @@ async function handleWebhookEvent(req, res) {
       if (change.field === 'messages') {
         const msgValue = change.value?.message;
         const senderId = change.value?.sender?.id;
+        const pageId = entry.id;
         if (msgValue && msgValue.text && senderId) {
           const messageId = msgValue.mid || `msg_${Date.now()}`;
-          handleNewMessage(senderId, msgValue.text, messageId);
+          handleNewMessage(pageId, senderId, msgValue.text, messageId);
         }
       }
     }

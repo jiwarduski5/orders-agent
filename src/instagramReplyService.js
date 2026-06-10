@@ -6,15 +6,15 @@
  */
 
 const axios = require('axios');
-const { getCurrentToken } = require('./tokenManager');
+const { getToken } = require('./clientManager');
 
 /**
  * Sends a text message reply to an Instagram user
  * @param {string} recipientId - The Instagram-scoped user ID (IGSID)
  * @param {string} text - The message text to send
  */
-async function sendInstagramReply(recipientId, text) {
-  const token = getCurrentToken();
+async function sendInstagramReply(pageId, recipientId, text) {
+  const token = getToken(pageId);
 
   if (!token) {
     console.warn('⚠️ No Instagram access token available. Cannot reply.');

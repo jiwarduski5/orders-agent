@@ -17,6 +17,7 @@
  */
 
 const TelegramBot = require('node-telegram-bot-api');
+const { getTelegramChatId } = require('./clientManager');
 
 let bot = null;
 
@@ -67,8 +68,8 @@ function initTelegramBot() {
 /**
  * Sends a Telegram text message with Admin buttons
  */
-async function sendTelegram(text) {
-  const chatId = process.env.TELEGRAM_CHAT_ID;
+async function sendTelegram(pageId, text) {
+  const chatId = getTelegramChatId(pageId);
   if (!bot || !chatId) {
     console.log('⚠️ Telegram bot not initialized or chat ID missing. Skipping notification.');
     return;
@@ -150,9 +151,9 @@ function formatRawMessage(senderId, rawText) {
   );
 }
 
-async function sendOrderNotification(order, orderNumber, usedAI = false) {
+async function sendOrderNotification(pageId, order, orderNumber, usedAI = false) {
   const message = formatTelegramMessage(order, orderNumber, usedAI);
-  await sendTelegram(message);
+  await sendTelegram(pageId, message);
   console.log(`✅ Telegram notification sent for order #${orderNumber}.`);
 }
 
