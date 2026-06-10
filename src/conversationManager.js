@@ -462,13 +462,6 @@ async function handleNewMessage(senderId, messageText, messageId) {
   const text = messageText.trim();
   console.log(`👤 [${senderId}] state=${convo.state} lang=${convo.lang} msg="${text}"`);
 
-  // ── HUMAN MODE — complete silence ──────────────────────────────────────────
-  if (convo.state === 'human') {
-    await sessionStore.set(senderId, convo); // save messageId
-    console.log(`🔕 [${senderId}] in human mode — bot silent`);
-    return;
-  }
-
   // ── RESTART KEYWORD — goes back to language selection ───────────────────────
   if (isRestart(text)) {
     convo.state = 'lang';
@@ -489,6 +482,13 @@ async function handleNewMessage(senderId, messageText, messageId) {
     console.log(`❌ [${senderId}] cancelled their order`);
     await typingDelay(cancelText);
     await sendInstagramReply(senderId, cancelText);
+    return;
+  }
+
+  // ── HUMAN MODE — complete silence ──────────────────────────────────────────
+  if (convo.state === 'human') {
+    await sessionStore.set(senderId, convo); // save messageId
+    console.log(`🔕 [${senderId}] in human mode — bot silent`);
     return;
   }
 
