@@ -2,38 +2,31 @@
  * geminiService.js
  *
  * Google Gemini AI integration for natural conversational order-taking.
- * Handles customer interactions in Badini Kurdish, Arabic, and English.
- * Uses dynamic slot filling to collect order information naturally.
- *
- * The AI acts as a warm, friendly shop assistant — not a robot.
- * It collects order info through natural conversation, one piece at a time.
+ * Uses the REST API directly (no SDK) for maximum compatibility with
+ * service-account-bound API keys (AQ. format).
  */
 
-const { GoogleGenerativeAI } = require('@google/generative-ai');
+const axios = require('axios');
 
-let genAI = null;
+let apiKey = null;
+
+const GEMINI_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent';
 
 // ─── INITIALIZATION ──────────────────────────────────────────────────────────
 
 function initGemini() {
-  const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey) {
+  const key = process.env.GEMINI_API_KEY;
+  if (!key) {
     console.log('⚠️ No GEMINI_API_KEY found. AI mode disabled — using regex fallback.');
     return false;
   }
-
-  try {
-    genAI = new GoogleGenerativeAI(apiKey);
-    console.log('✅ Gemini AI initialized (gemini-2.0-flash)');
-    return true;
-  } catch (err) {
-    console.error('❌ Failed to initialize Gemini:', err.message);
-    return false;
-  }
+  apiKey = key;
+  console.log('✅ Gemini AI initialized (REST API, gemini-2.0-flash)');
+  return true;
 }
 
 function isAIEnabled() {
-  return genAI !== null;
+  return apiKey !== null;
 }
 
 // ─── SYSTEM PROMPT BUILDER ───────────────────────────────────────────────────
@@ -111,46 +104,50 @@ RULES FOR "extracted":
 - Extract names, addresses, and products in the customer's original language`;
 }
 
-// ─── MESSAGE PROCESSING ──────────────────────────────────────────────────────
+// ─── MESSAGE PROCESSING (REST API) ──────────────────────────────────────────
 
-/**
- * Process a customer message through Gemini AI.
- *
- * IMPORTANT: chatHistory MUST be an array that either:
- *   - Is empty [] (for the first message), OR
- *   - Starts with a { role: 'user', ... } entry
- * Google's API crashes if the first entry has role 'model'.
- */
 async function processMessage(lang, chatHistory, currentSlots, completedOrdersCount, userMessage) {
-  if (!genAI) {
+  if (!apiKey) {
     throw new Error('Gemini AI not initialized');
   }
 
   const systemPrompt = buildSystemPrompt(lang, currentSlots, completedOrdersCount);
 
-  const dynamicModel = genAI.getGenerativeModel({
-    model: 'gemini-2.0-flash',
-    systemInstruction: systemPrompt,
+  // Ensure history is clean (must start with 'user' role)
+  let safeHistory = Array.isArray(chatHistory) ? [...chatHistory] : [];
+  if (safeHistory.length > 0 && safeHistory[0].role !== 'user') {
+    safeHistory = [];
+    console.log('⚠️ Chat history was corrupted. Reset to empty.');
+  }
+
+  // Build the request body for the REST API
+  const contents = [
+    ...safeHistory,
+    { role: 'user', parts: [{ text: userMessage }] },
+  ];
+
+  const requestBody = {
+    system_instruction: {
+      parts: [{ text: systemPrompt }],
+    },
+    contents,
     generationConfig: {
       temperature: 0.4,
       responseMimeType: 'application/json',
       maxOutputTokens: 500,
     },
-  });
+  };
 
-  // SAFETY: Ensure history starts with 'user' role (Google API requirement)
-  let safeHistory = Array.isArray(chatHistory) ? [...chatHistory] : [];
-  if (safeHistory.length > 0 && safeHistory[0].role !== 'user') {
-    safeHistory = []; // Reset corrupted history rather than crash
-    console.log('⚠️ Chat history was corrupted (started with model). Reset to empty.');
-  }
+  const response = await axios.post(
+    `${GEMINI_URL}?key=${apiKey}`,
+    requestBody,
+    {
+      headers: { 'Content-Type': 'application/json' },
+      timeout: 15000,
+    }
+  );
 
-  const chat = dynamicModel.startChat({
-    history: safeHistory,
-  });
-
-  const result = await chat.sendMessage(userMessage);
-  const responseText = result.response.text();
+  const responseText = response.data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
 
   let parsed;
   try {
@@ -164,7 +161,7 @@ async function processMessage(lang, chatHistory, currentSlots, completedOrdersCo
     };
   }
 
-  // Build updated history (always user first, then model)
+  // Build updated history
   const updatedHistory = [
     ...safeHistory,
     { role: 'user', parts: [{ text: userMessage }] },
