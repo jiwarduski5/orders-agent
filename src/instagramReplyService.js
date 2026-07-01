@@ -1,23 +1,11 @@
-/**
- * instagramReplyService.js
- *
- * Sends reply messages back to Instagram users via the Instagram Messaging API.
- * Uses the access token from tokenManager.
- */
-
 const axios = require('axios');
 const { getToken } = require('./clientManager');
 
-/**
- * Sends a text message reply to an Instagram user
- * @param {string} recipientId - The Instagram-scoped user ID (IGSID)
- * @param {string} text - The message text to send
- */
 async function sendInstagramReply(pageId, recipientId, text) {
   const token = getToken(pageId);
 
   if (!token) {
-    console.warn('⚠️ No Instagram access token available. Cannot reply.');
+    console.warn('  No Instagram token — cant reply');
     return;
   }
 
@@ -36,12 +24,11 @@ async function sendInstagramReply(pageId, recipientId, text) {
       }
     );
 
-    console.log(`💬 Instagram reply sent to ${recipientId}`);
+    console.log(`  Reply sent to ${recipientId}`);
     return response.data;
   } catch (error) {
     const errMsg = error.response?.data?.error?.message || error.message;
-    console.error(`❌ Instagram reply failed: ${errMsg}`);
-    // Don't throw — we don't want a reply failure to crash the webhook
+    console.error(`  Instagram reply failed: ${errMsg}`);
   }
 }
 

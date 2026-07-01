@@ -1,10 +1,3 @@
-/**
- * geminiService.js
- *
- * Google Gemini AI integration for natural conversational order-taking.
- * Uses the REST API directly with n8n-style Function Calling (Tools).
- */
-
 const axios = require('axios');
 
 let apiKey = null;
@@ -13,11 +6,11 @@ const GEMINI_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemi
 function initGemini() {
   const key = process.env.GEMINI_API_KEY;
   if (!key) {
-    console.log('⚠️ No GEMINI_API_KEY found. AI mode disabled.');
+    console.log('  No GEMINI_API_KEY found — AI mode disabled');
     return false;
   }
   apiKey = key;
-  console.log('✅ Gemini AI initialized (Function Calling Mode, gemini-2.5-flash)');
+  console.log('  Gemini AI ready (gemini-2.5-flash + functions)');
   return true;
 }
 
@@ -27,58 +20,33 @@ function isAIEnabled() {
 
 function buildSystemPrompt(lang, currentSlots, completedOrdersCount) {
   const langInstruction = {
-    ku: `DIALECT RULE: You MUST speak EXACTLY like a real person from Duhok, Kurdistan (Badini dialect). 
-Use ONLY Arabic script. NEVER use Sorani words. 
-BADINI DICTIONARY (Use these exact phrases to sound kind and natural):
-- "چەوانی؟ باشی؟" (How are you?)
-- "سەرچاڤا" or "سەرچاڤان" (Sure / on my eyes)
-- "تە چ دڤێت؟" (What do you want?)
-- "گەلەک سپاس" (Thank you very much)
-- "د خزمەتا تە دامە" (I am at your service)
-- "باشە" (Okay)
-- "ببورە" (Sorry)
-FORBIDDEN WORDS (Never use these Sorani words): "چۆنی", "دەوێت", "بەخێربێیت", "پێویستە", "ئێستا".`,
-    ar: 'You MUST respond in Iraqi Arabic. Chat warmly and naturally like an Iraqi person would.',
-    en: 'You MUST respond in English. Chat warmly and naturally.',
-  }[lang] || 'Respond in the same language the customer uses.';
+    ku: `Speak Badini Kurdish (Duhok dialect) in Arabic script. Be warm, natural, never Sorani.
+Use phrases like: "سەرچاڤا", "چەوانی؟", "گەلەک سپاس", "باشە", "د خزمەتا تە دامە"
+Never use: "چۆنی", "دەوێت", "بەخێربێیت", "پێویستە", "ئێستا"`,
+    ar: 'Speak Iraqi Arabic. Be warm and natural like a friendly shop owner.',
+    en: 'Speak English. Be warm, casual, and natural.',
+  }[lang] || 'Use the same language as the customer.';
 
-  const slotStatus = (val) => val || '❌ Not yet collected';
+  const slotStatus = (val) => val || 'not yet';
 
-  return `You are a real, friendly shopkeeper in Duhok responding to Instagram DMs.
+  return `You are a friendly shop assistant in Duhok chatting on Instagram DMs. Talk like a real person — be warm, short, and natural.
 
-LANGUAGE RULES: 
-${langInstruction}
+LANGUAGE: ${langInstruction}
 
-*** GOLDEN EXAMPLES (COPY THIS EXACT VIBE AND LENGTH) ***
-User: سلام
-You: سەرچاڤا، تە چ دڤێت؟
-
-User: من سیستەمێ ڤیژن ٢٤ دڤێت
-You: باشە سەرچاڤا. دکارم ناڤێ تە بزانم؟
-
-User: ئەحمەد
-You: گەلەک سپاس ئەحمەد. ژمارا تەلەفۆنا تە؟
-
-User: 07501234567
-You: باشە، ناونیشانێ تە ل کیڤەیە؟
-
-User: دهۆک، مازی مۆل
-You: داواکاریا تە: سیستەمێ ڤیژن ٢٤، ناڤ: ئەحمەد، ژمارە: 07501234567، ناونیشان: دهۆک. دروستە؟
-***********************************************************
-
-PERSONALITY RULES (CRITICAL):
-1. ACT EXACTLY LIKE THE GOLDEN EXAMPLES ABOVE.
-2. BE EXTREMELY SHORT. Never write more than 1 or 2 sentences (max 10 words).
-3. NEVER say "I have recorded your name/phone." Just say "باشە" or "گەلەک سپاس" and ask the next question immediately.
-4. DO NOT be robotic or overly enthusiastic. Max 1 emoji.
-5. If the user asks for a price, tell them to check the Instagram page, then immediately ask if they want to place an order.
+RULES:
+- Be short (1-2 sentences max, like 5-10 words)
+- Be kind, natural
+- Never be robotic or formal
+- If they ask price, say "check our Insta page" then ask if they want to order
+- Never list back everything — just say "باشە" or "okay" and ask the next thing
+- Sound like a real person texting, not a customer service script
 
 YOUR JOB:
-Have a natural conversation with the user to collect their Name, Phone, Address, and the Product they want.
-If the user provides any of these pieces of information, you MUST call the "update_order" tool to save them before you reply.
-If you have collected ALL 4 pieces of information, you MUST call the "confirm_order" tool.
+Chat naturally to collect: Name, Phone, Address, Product.
+When they give info, call "update_order" silently before replying.
+When ALL 4 are collected, call "confirm_order".
 
-CURRENT ORDER STATUS (DO NOT TELL THE USER THIS, IT IS JUST FOR YOUR KNOWLEDGE):
+CURRENT PROGRESS (just for you):
 - Name: ${slotStatus(currentSlots.name)}
 - Phone: ${slotStatus(currentSlots.phone)}
 - Address: ${slotStatus(currentSlots.address)}
@@ -138,7 +106,7 @@ async function processMessage(lang, chatHistory, currentSlots, completedOrdersCo
     contents,
     tools,
     generationConfig: {
-      temperature: 0.2
+      temperature: 0.7
     }
   };
 
@@ -160,7 +128,7 @@ async function processMessage(lang, chatHistory, currentSlots, completedOrdersCo
     let finalReply = "";
 
     if (part.functionCall) {
-      console.log('🤖 Tool Triggered:', part.functionCall.name, part.functionCall.args);
+      console.log('  Tool called:', part.functionCall.name, '-', JSON.stringify(part.functionCall.args).slice(0,80));
       
       if (part.functionCall.name === 'update_order') {
         extractedData = part.functionCall.args || {};
@@ -183,7 +151,7 @@ async function processMessage(lang, chatHistory, currentSlots, completedOrdersCo
         system_instruction: { parts: [{ text: systemPrompt }] },
         contents,
         tools,
-        generationConfig: { temperature: 0.2 }
+        generationConfig: { temperature: 0.7 }
       }, {
         headers: { 'Content-Type': 'application/json' },
         timeout: 15000
@@ -196,7 +164,6 @@ async function processMessage(lang, chatHistory, currentSlots, completedOrdersCo
 
     finalReply = finalReply.replace(/[\*\_]/g, '').trim();
 
-    // History now tracks text interactions cleanly without leaking JSON logic
     const updatedHistory = [
       ...safeHistory,
       { role: 'user', parts: [{ text: userMessage }] },

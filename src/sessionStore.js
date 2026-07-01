@@ -8,23 +8,21 @@ class SessionStore {
 
     if (process.env.REDIS_URL) {
       this.redisClient = createClient({ url: process.env.REDIS_URL });
-      this.redisClient.on('error', (err) => console.error('Redis Client Error:', err));
+      this.redisClient.on('error', (err) => console.error('  Redis error:', err));
       this.redisClient.connect()
-        .then(() => console.log('✅ Connected to Redis Database!'))
-        .catch((err) => console.error('❌ Failed to connect to Redis:', err));
+        .then(() => console.log('  Connected to Redis'))
+        .catch((err) => console.error('  Redis connection failed:', err));
     } else {
-      console.log('⚠️ No REDIS_URL found. Falling back to local RAM memory.');
+      console.log('  No Redis URL — using local memory');
     }
   }
 
-  // ─── CONVERSATIONS ────────────────────────────────────────────────────────
   async get(pageId, userId) {
     const key = `convo:${pageId}:${userId}`;
     if (this.redisClient) {
       const data = await this.redisClient.get(key);
       if (data) {
         const parsed = JSON.parse(data);
-        // Map messageIds back to a Set
         parsed.messageIds = new Set(parsed.messageIds || []);
         return parsed;
       }
@@ -37,9 +35,7 @@ class SessionStore {
   async set(pageId, userId, data) {
     const key = `convo:${pageId}:${userId}`;
     if (this.redisClient) {
-      // Convert Set to Array before JSON stringify
       const toSave = { ...data, messageIds: Array.from(data.messageIds || []) };
-      // Expire session after 24 hours (86400 seconds)
       await this.redisClient.setEx(key, 86400, JSON.stringify(toSave));
     } else {
       this.memory.set(key, data);
@@ -55,10 +51,7 @@ class SessionStore {
     }
   }
 
-  // ─── DUPLICATE GUARD (PHONES & PRODUCTS) ────────────────────────────────
-  // We keep phone+product combo for 12 hours (43200 seconds) to block exact duplicates
   async recordPhone(pageId, phone, product = '') {
-    // Standardize phone and product by removing spaces
     const cleanPhone = phone.replace(/\s+/g, '');
     const cleanProduct = product.replace(/\s+/g, '').toLowerCase();
     const key = `phone:${pageId}:${cleanPhone}:prod:${cleanProduct}`;
@@ -67,7 +60,6 @@ class SessionStore {
       await this.redisClient.setEx(key, 43200, 'ordered');
     } else {
       this.phonesMemory.set(key, Date.now());
-      // Lazy cleanup for local memory
       setTimeout(() => this.phonesMemory.delete(key), 43200 * 1000);
     }
   }

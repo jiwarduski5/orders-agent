@@ -1,10 +1,3 @@
-/**
- * server.js
- *
- * Main Express server entry point.
- * Starts the HTTP server, registers routes, and initializes services.
- */
-
 require('dotenv').config();
 const express = require('express');
 const { handleVerification, handleWebhookEvent } = require('./webhookHandler');
@@ -15,9 +8,6 @@ const { initGemini } = require('./geminiService');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// ─── Middleware ───────────────────────────────────────────────────────────────
-
-// Save raw body for Meta signature verification safely
 app.use(express.json({
   verify: (req, res, buf) => {
     req.rawBody = buf.toString();
@@ -25,56 +15,69 @@ app.use(express.json({
 }));
 app.use(express.urlencoded({ extended: true }));
 
-// ─── Routes ───────────────────────────────────────────────────────────────────
-
-// Health check (used by UptimeRobot to keep server alive)
 app.get('/', (req, res) => {
   res.json({
     status: 'running',
-    service: 'Instagram Order Agent v2.0',
+    service: 'Orders Agent v4.0',
     time: new Date().toISOString(),
   });
 });
 
-// Meta webhook verification (GET)
 app.get('/webhook', handleVerification);
-
-// Instagram events receiver (POST)
 app.post('/webhook', handleWebhookEvent);
 
-// ─── Start Server ─────────────────────────────────────────────────────────────
+function sleep(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
 
 app.listen(PORT, async () => {
   console.log('');
-  console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-  console.log('  🚀 Instagram Order Agent v4.0 (AI-Powered)');
-  console.log(`  📡 Listening on port ${PORT}`);
-  console.log('  💬 Auto-reply + Message buffering enabled');
-  console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+  console.log('  =========================================');
+  console.log('  ORDERS AGENT v4.0');
+  console.log('  Your friendly shop assistant');
+  console.log('  =========================================');
   console.log('');
 
-  // Initialize token manager
-  try {
-    await initTokenManager();
-  } catch (err) {
-    console.warn('⚠️  Token manager init failed (check Meta credentials):', err.message);
+  const steps = [
+    { msg: '.. Starting server on port ' + PORT, delay: 400 },
+    { msg: '.. Initializing security layers...', delay: 300 },
+    { msg: '.. Connecting to cloud services...', delay: 500 },
+  ];
+
+  for (const step of steps) {
+    console.log('  ' + step.msg);
+    await sleep(step.delay);
   }
 
-  // Initialize Gemini AI
+  await sleep(300);
+
+  try {
+    await initTokenManager();
+    console.log('  .. Instagram token manager ready');
+  } catch (err) {
+    console.warn('  .. Token manager init failed (check Meta credentials):', err.message);
+  }
+
+  await sleep(500);
+
   initGemini();
+  await sleep(400);
 
-  // Initialize Telegram Bot
   initTelegramBot();
+  await sleep(400);
 
-  console.log('✅ Server ready. Waiting for Instagram events...');
+  console.log('');
+  console.log('  =========================================');
+  console.log('  All systems ready!');
+  console.log('  Waiting for your customers...');
+  console.log('  =========================================');
   console.log('');
 });
 
-// ─── Global error handler ─────────────────────────────────────────────────────
 process.on('unhandledRejection', (reason) => {
-  console.error('❌ Unhandled Promise Rejection:', reason);
+  console.error('  !! Oops! Something broke:', reason);
 });
 
 process.on('uncaughtException', (error) => {
-  console.error('❌ Uncaught Exception:', error.message);
+  console.error('  !! Oops! Something broke:', error.message);
 });

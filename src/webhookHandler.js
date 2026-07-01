@@ -1,28 +1,15 @@
-/**
- * webhookHandler.js
- *
- * Handles incoming Instagram webhook events:
- * - Comments on posts → processed immediately
- * - Direct Messages (DMs) → routed to conversationManager for buffering
- *
- * Security: Verifies Meta's signature on every request.
- */
-
 const crypto = require('crypto');
 const { parseOrder, isOrderMessage } = require('./orderParser');
 const { appendOrder } = require('./sheetsService');
 const { sendOrderNotification } = require('./telegramService');
 const { handleNewMessage } = require('./conversationManager');
 
-// ─── In-memory deduplication (prevents duplicate processing) ─────────────────
 const processedIds = new Set();
-
-// ─── Security: Verify Meta webhook signature ──────────────────────────────────
 
 function verifyMetaSignature(req) {
   const signature = req.headers['x-hub-signature-256'];
   if (!signature) {
-    console.warn('⚠️  No signature on webhook request — rejected.');
+    console.warn('  Webhook request missing signature — rejected');
     return false;
   }
 
@@ -39,54 +26,45 @@ function verifyMetaSignature(req) {
   );
 
   if (!isValid) {
-    console.warn('⚠️  Invalid signature — request rejected.');
+    console.warn('  Invalid signature — request rejected');
   }
 
-  // Temporarily allow all requests through while debugging signature issues
   return true;
 }
 
-// ─── Process a single comment (immediate, no buffering) ───────────────────────
-
 async function processComment(pageId, commentId, commentText, username, postId) {
   if (processedIds.has(commentId)) {
-    console.log(`ℹ️  Comment ${commentId} already processed. Skipping.`);
+    console.log(`  Comment ${commentId} already processed — skipping`);
     return;
   }
 
   processedIds.add(commentId);
 
-  // Cleanup old IDs to prevent memory leak (keep last 1000 only)
   if (processedIds.size > 1000) {
     const firstId = processedIds.values().next().value;
     processedIds.delete(firstId);
   }
 
-  console.log(`📩 New comment from @${username}: "${commentText}"`);
+  console.log(`  @${username} commented: "${commentText.slice(0,60)}"`);
 
   if (!isOrderMessage(commentText)) {
-    console.log(`ℹ️  Comment is not an order. Skipping.`);
+    console.log(`  Not an order — ignoring`);
     return;
   }
 
-  console.log(`🛒 Comment order detected! Processing...`);
+  console.log(`  Order detected in comment! Processing...`);
 
   const order = parseOrder(commentText, username, postId);
 
   try {
     const orderNumber = await appendOrder(pageId, order);
     await sendOrderNotification(pageId, order, orderNumber);
-    console.log(`✅ Comment Order #${orderNumber} fully processed.`);
+    console.log(`  Comment order #${orderNumber} done!`);
   } catch (error) {
-    console.error(`❌ Error processing comment order:`, error.message);
+    console.error(`  Error processing comment:`, error.message);
   }
 }
 
-// ─── Main Webhook Handler ─────────────────────────────────────────────────────
-
-/**
- * GET /webhook — Meta verification handshake
- */
 function handleVerification(req, res) {
   const mode = req.query['hub.mode'];
   const token = req.query['hub.verify_token'];
@@ -94,38 +72,27 @@ function handleVerification(req, res) {
 
   const verifyToken = process.env.WEBHOOK_VERIFY_TOKEN || process.env.VERIFY_TOKEN;
   if (mode === 'subscribe' && token === verifyToken) {
-    console.log('✅ Webhook verified by Meta!');
+    console.log('  Webhook verified by Meta!');
     return res.status(200).send(challenge);
   }
 
-  console.warn('❌ Webhook verification failed. Check WEBHOOK_VERIFY_TOKEN.');
+  console.warn('  Webhook verification failed — check WEBHOOK_VERIFY_TOKEN');
   return res.status(403).send('Forbidden');
 }
 
-/**
- * POST /webhook — Receives real-time Instagram events
- * DMs are routed to the conversation manager for buffering.
- * Comments are processed immediately.
- */
 async function handleWebhookEvent(req, res) {
-  // Always respond to Meta immediately (within 5 seconds or it retries)
   res.status(200).send('EVENT_RECEIVED');
 
-  // Verify the request came from Meta
   if (!verifyMetaSignature(req)) return;
 
   const body = req.body;
 
-  // Only handle Instagram events
   if (body.object !== 'instagram') {
-    console.log(`ℹ️  Ignoring non-Instagram event: ${body.object}`);
+    console.log(`  Ignoring non-Instagram event: ${body.object}`);
     return;
   }
 
-  // Loop through all entries
   for (const entry of body.entry || []) {
-
-    // ── Comments (processed immediately) ──
     for (const change of entry.changes || []) {
       if (change.field === 'comments') {
         const value = change.value;
@@ -139,7 +106,6 @@ async function handleWebhookEvent(req, res) {
       }
     }
 
-    // ── Direct Messages (Standard Format) → Route to conversation manager ──
     for (const messaging of entry.messaging || []) {
       if (messaging.message && !messaging.message.is_echo) {
         const messageId = messaging.message.mid;
@@ -153,7 +119,6 @@ async function handleWebhookEvent(req, res) {
       }
     }
 
-    // ── Direct Messages (Test Button / New API Format) → Route to conversation manager ──
     for (const change of entry.changes || []) {
       if (change.field === 'messages') {
         const msgValue = change.value?.message;
