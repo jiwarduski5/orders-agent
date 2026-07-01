@@ -9,7 +9,7 @@ const axios = require('axios');
 
 let apiKey = null;
 
-const GEMINI_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent';
+const GEMINI_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent';
 
 // ─── INITIALIZATION ──────────────────────────────────────────────────────────
 
@@ -20,7 +20,7 @@ function initGemini() {
     return false;
   }
   apiKey = key;
-  console.log('✅ Gemini AI initialized (REST API, gemini-3.5-flash)');
+  console.log('✅ Gemini AI initialized (REST API, gemini-2.5-flash)');
   return true;
 }
 
