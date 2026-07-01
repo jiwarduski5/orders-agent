@@ -569,7 +569,10 @@ async function handleNewMessage(pageId, senderId, messageText, messageId) {
         convo.chatHistory = [];
         convo.currentSlots = { name: null, phone: null, address: null, product: null, notes: null };
         const greeting = AI_GREETINGS[convo.lang] || AI_GREETINGS.en;
-        convo.chatHistory = [{ role: 'model', parts: [{ text: greeting }] }];
+        convo.chatHistory = [
+          { role: 'user', parts: [{ text: 'slav' }] },
+          { role: 'model', parts: [{ text: greeting }] }
+        ];
         console.log(`🔄 [${senderId}] restarted from finished (AI mode)`);
         await sessionStore.set(pageId, senderId, convo);
         await typingDelay(greeting);
@@ -603,7 +606,10 @@ async function handleNewMessage(pageId, senderId, messageText, messageId) {
         convo.chatHistory = [];
         convo.currentSlots = { name: null, phone: null, address: null, product: null, notes: null };
         const greeting = AI_GREETINGS[chosen] || AI_GREETINGS.en;
-        convo.chatHistory = [{ role: 'model', parts: [{ text: greeting }] }];
+        convo.chatHistory = [
+          { role: 'user', parts: [{ text: 'slav' }] },
+          { role: 'model', parts: [{ text: greeting }] }
+        ];
         console.log(`🌍🧠 [${senderId}] selected lang: ${chosen} → AI mode`);
         await sessionStore.set(pageId, senderId, convo);
         await typingDelay(greeting);
@@ -847,6 +853,11 @@ async function finalizeAllOrders(pageId, senderId, convo, L) {
 
 async function handleAIChat(pageId, senderId, text, convo) {
   try {
+    // Fix broken chat history from older sessions in Redis (must start with 'user')
+    if (convo.chatHistory && convo.chatHistory.length > 0 && convo.chatHistory[0].role === 'model') {
+      convo.chatHistory.unshift({ role: 'user', parts: [{ text: 'slav' }] });
+    }
+
     const result = await geminiService.processMessage(
       convo.lang,
       convo.chatHistory || [],

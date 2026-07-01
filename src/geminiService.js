@@ -29,15 +29,8 @@ function initGemini() {
 
   try {
     genAI = new GoogleGenerativeAI(apiKey);
-    model = genAI.getGenerativeModel({
-      model: 'gemini-2.0-flash',
-      generationConfig: {
-        temperature: 0.4,
-        responseMimeType: 'application/json',
-        maxOutputTokens: 500,
-      },
-    });
-    console.log('✅ Gemini AI initialized (gemini-2.0-flash, temp=0.4)');
+    genAI = new GoogleGenerativeAI(apiKey);
+    console.log('✅ Gemini AI initialized');
     return true;
   } catch (err) {
     console.error('❌ Failed to initialize Gemini:', err.message);
@@ -45,11 +38,8 @@ function initGemini() {
   }
 }
 
-/**
- * Check if AI mode is available
- */
 function isAIEnabled() {
-  return model !== null;
+  return genAI !== null;
 }
 
 // ─── SYSTEM PROMPT BUILDER ───────────────────────────────────────────────────
@@ -145,15 +135,25 @@ RULES FOR "extracted":
  * @returns {Object} { reply, extracted, action, updatedHistory }
  */
 async function processMessage(lang, chatHistory, currentSlots, completedOrdersCount, userMessage) {
-  if (!model) {
+  if (!genAI) {
     throw new Error('Gemini AI not initialized');
   }
 
   const systemPrompt = buildSystemPrompt(lang, currentSlots, completedOrdersCount);
 
-  const chat = model.startChat({
+  // We must create the model instance here so the systemInstruction is dynamic
+  const dynamicModel = genAI.getGenerativeModel({
+    model: 'gemini-2.0-flash',
+    systemInstruction: { parts: [{ text: systemPrompt }] },
+    generationConfig: {
+      temperature: 0.4,
+      responseMimeType: 'application/json',
+      maxOutputTokens: 500,
+    },
+  });
+
+  const chat = dynamicModel.startChat({
     history: chatHistory,
-    systemInstruction: systemPrompt,
   });
 
   const result = await chat.sendMessage(userMessage);
