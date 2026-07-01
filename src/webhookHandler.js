@@ -9,7 +9,6 @@ const processedIds = new Set();
 function verifyMetaSignature(req) {
   const signature = req.headers['x-hub-signature-256'];
   if (!signature) {
-    console.warn('  Webhook request missing signature — rejected');
     return false;
   }
 
@@ -20,16 +19,10 @@ function verifyMetaSignature(req) {
       .update(req.rawBody || JSON.stringify(req.body))
       .digest('hex');
 
-  const isValid = crypto.timingSafeEqual(
+  return crypto.timingSafeEqual(
     Buffer.from(signature),
     Buffer.from(expectedSignature)
   );
-
-  if (!isValid) {
-    console.warn('  Invalid signature — request rejected');
-  }
-
-  return true;
 }
 
 async function processComment(pageId, commentId, commentText, username, postId) {

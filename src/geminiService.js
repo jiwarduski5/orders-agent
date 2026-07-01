@@ -7,7 +7,7 @@ const GEMINI_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemi
 function initGemini() {
   ready = keyManager.initKeys();
   if (ready) {
-    console.log('  Gemini AI ready with key rotation');
+    console.log('  Gemini AI ready with', keyManager.getKeyCount(), 'key(s)');
   } else {
     console.log('  No Gemini API keys found — AI mode disabled');
   }
@@ -113,11 +113,10 @@ async function processMessage(lang, chatHistory, currentSlots, completedOrdersCo
     ]
   }];
 
-  let lastError = null;
+  const allKeys = keyManager.getAllKeys();
 
-  for (let attempt = 0; attempt < Math.min(keyManager.getKeyCount(), 3); attempt++) {
-    const apiKey = keyManager.getKey();
-    if (!apiKey) break;
+  for (let attempt = 0; attempt < allKeys.length; attempt++) {
+    const apiKey = allKeys[attempt];
 
     try {
       let response = await callGemini(apiKey, systemPrompt, contents, tools);
@@ -134,7 +133,7 @@ async function processMessage(lang, chatHistory, currentSlots, completedOrdersCo
       let finalReply = "";
 
       if (part.functionCall) {
-        console.log('  Tool called:', part.functionCall.name, '-', JSON.stringify(part.functionCall.args).slice(0,80));
+        console.log('  Tool:', part.functionCall.name, JSON.stringify(part.functionCall.args).slice(0,80));
 
         if (part.functionCall.name === 'update_order') {
           extractedData = part.functionCall.args || {};
@@ -179,21 +178,19 @@ async function processMessage(lang, chatHistory, currentSlots, completedOrdersCo
       };
 
     } catch (error) {
-      lastError = error;
       if (error.response?.status === 429) {
-        console.log(`  Key #${keyManager.getStatus().findIndex(s => s.active) + 1} hit quota — rotating...`);
-        keyManager.rotate();
+        console.log(`  Key #${attempt + 1} hit quota, trying key #${attempt + 2}...`);
         continue;
       }
-      if (error.response?.status === 500 || error.code === 'ECONNABORTED') {
-        console.log('  Gemini server hiccup — retrying...');
+      if (error.code === 'ECONNABORTED' || error.response?.status === 500 || error.response?.status === 503) {
+        console.log(`  Key #${attempt + 1} server error, trying next...`);
         continue;
       }
       throw error;
     }
   }
 
-  throw lastError || new Error('All Gemini keys exhausted');
+  throw new Error('All Gemini keys exhausted');
 }
 
 module.exports = { initGemini, isAIEnabled, processMessage };
