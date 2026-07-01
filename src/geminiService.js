@@ -12,14 +12,9 @@
 const { GoogleGenerativeAI } = require('@google/generative-ai');
 
 let genAI = null;
-let model = null;
 
 // ─── INITIALIZATION ──────────────────────────────────────────────────────────
 
-/**
- * Initialize Gemini AI (called once from server.js)
- * @returns {boolean} true if AI is ready, false if disabled/failed
- */
 function initGemini() {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) {
@@ -29,8 +24,7 @@ function initGemini() {
 
   try {
     genAI = new GoogleGenerativeAI(apiKey);
-    genAI = new GoogleGenerativeAI(apiKey);
-    console.log('✅ Gemini AI initialized');
+    console.log('✅ Gemini AI initialized (gemini-2.0-flash)');
     return true;
   } catch (err) {
     console.error('❌ Failed to initialize Gemini:', err.message);
@@ -44,11 +38,6 @@ function isAIEnabled() {
 
 // ─── SYSTEM PROMPT BUILDER ───────────────────────────────────────────────────
 
-/**
- * Build the system prompt based on language and current context.
- * This is like giving a real employee their instructions on the first day.
- * We give them a PERSONALITY, not a jail.
- */
 function buildSystemPrompt(lang, currentSlots, completedOrdersCount) {
   const langInstruction = {
     ku: 'You MUST respond in Badini Kurdish (the Kurmanji dialect spoken in Duhok and Erbil, Iraq). Use Arabic/Kurdish script (NOT Latin letters). Chat warmly and naturally like a Kurdish person from Duhok would.',
@@ -125,14 +114,12 @@ RULES FOR "extracted":
 // ─── MESSAGE PROCESSING ──────────────────────────────────────────────────────
 
 /**
- * Process a customer message through Gemini AI
+ * Process a customer message through Gemini AI.
  *
- * @param {string} lang - Language code (ku, ar, en)
- * @param {Array} chatHistory - Previous messages in Gemini format [{role, parts}]
- * @param {Object} currentSlots - {name, phone, address, product, notes}
- * @param {number} completedOrdersCount - Orders already completed this session
- * @param {string} userMessage - The customer's new message
- * @returns {Object} { reply, extracted, action, updatedHistory }
+ * IMPORTANT: chatHistory MUST be an array that either:
+ *   - Is empty [] (for the first message), OR
+ *   - Starts with a { role: 'user', ... } entry
+ * Google's API crashes if the first entry has role 'model'.
  */
 async function processMessage(lang, chatHistory, currentSlots, completedOrdersCount, userMessage) {
   if (!genAI) {
@@ -141,7 +128,6 @@ async function processMessage(lang, chatHistory, currentSlots, completedOrdersCo
 
   const systemPrompt = buildSystemPrompt(lang, currentSlots, completedOrdersCount);
 
-  // We must create the model instance here so the systemInstruction is dynamic
   const dynamicModel = genAI.getGenerativeModel({
     model: 'gemini-2.0-flash',
     systemInstruction: systemPrompt,
@@ -152,8 +138,15 @@ async function processMessage(lang, chatHistory, currentSlots, completedOrdersCo
     },
   });
 
+  // SAFETY: Ensure history starts with 'user' role (Google API requirement)
+  let safeHistory = Array.isArray(chatHistory) ? [...chatHistory] : [];
+  if (safeHistory.length > 0 && safeHistory[0].role !== 'user') {
+    safeHistory = []; // Reset corrupted history rather than crash
+    console.log('⚠️ Chat history was corrupted (started with model). Reset to empty.');
+  }
+
   const chat = dynamicModel.startChat({
-    history: chatHistory,
+    history: safeHistory,
   });
 
   const result = await chat.sendMessage(userMessage);
@@ -164,7 +157,6 @@ async function processMessage(lang, chatHistory, currentSlots, completedOrdersCo
     parsed = JSON.parse(responseText);
   } catch (e) {
     console.error('⚠️ Gemini returned invalid JSON:', responseText.substring(0, 200));
-    // Fallback: strip JSON artifacts and use as plain reply
     parsed = {
       reply: responseText.replace(/[{}"]/g, '').trim().substring(0, 300) || 'ببورە، دوبارە بنێرە.',
       extracted: {},
@@ -172,14 +164,14 @@ async function processMessage(lang, chatHistory, currentSlots, completedOrdersCo
     };
   }
 
-  // Build updated history (add this exchange)
+  // Build updated history (always user first, then model)
   const updatedHistory = [
-    ...chatHistory,
+    ...safeHistory,
     { role: 'user', parts: [{ text: userMessage }] },
-    { role: 'model', parts: [{ text: parsed.reply || responseText }] },
+    { role: 'model', parts: [{ text: responseText }] },
   ];
 
-  // Trim history to last 20 entries (10 exchanges) to control costs
+  // Trim to last 20 entries (10 exchanges) to control costs
   const trimmedHistory = updatedHistory.length > 20
     ? updatedHistory.slice(updatedHistory.length - 20)
     : updatedHistory;
