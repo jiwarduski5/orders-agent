@@ -144,7 +144,7 @@ async function processMessage(lang, chatHistory, currentSlots, completedOrdersCo
   // We must create the model instance here so the systemInstruction is dynamic
   const dynamicModel = genAI.getGenerativeModel({
     model: 'gemini-2.0-flash',
-    systemInstruction: { parts: [{ text: systemPrompt }] },
+    systemInstruction: systemPrompt,
     generationConfig: {
       temperature: 0.4,
       responseMimeType: 'application/json',
