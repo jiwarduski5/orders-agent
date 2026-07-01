@@ -138,14 +138,26 @@ async function processMessage(lang, chatHistory, currentSlots, completedOrdersCo
     },
   };
 
-  const response = await axios.post(
-    `${GEMINI_URL}?key=${apiKey}`,
-    requestBody,
-    {
-      headers: { 'Content-Type': 'application/json' },
-      timeout: 15000,
-    }
-  );
+  let response;
+  try {
+    response = await axios.post(
+      `${GEMINI_URL}?key=${apiKey}`,
+      requestBody,
+      {
+        headers: {
+          'Content-Type': 'application/json',
+          'x-goog-api-key': apiKey,
+        },
+        timeout: 15000,
+      }
+    );
+  } catch (apiErr) {
+    // Log the FULL error from Google so we can debug
+    const errData = apiErr.response?.data;
+    const errStatus = apiErr.response?.status;
+    console.error(`❌ Gemini API ${errStatus} error:`, JSON.stringify(errData || apiErr.message).substring(0, 500));
+    throw apiErr;
+  }
 
   const responseText = response.data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
 
