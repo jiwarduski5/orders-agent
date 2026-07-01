@@ -15,6 +15,7 @@
 
 const { appendOrder } = require('./sheetsService');
 const { sendInstagramReply } = require('./instagramReplyService');
+const geminiService = require('./geminiService');
 
 // ─── LANGUAGE PACKS ───────────────────────────────────────────────────────────
 const LANG = {
@@ -288,6 +289,13 @@ const LANG_SELECT_MSG =
   '2: Arabic\n' +
   '3: English';
 
+// ─── AI GREETINGS (shown after language selection when AI is enabled) ─────────
+const AI_GREETINGS = {
+  ku: 'بخێرهاتی! 😊 ئەز هاریکارا تەمە بۆ داخازیکرنێ. چاوا دشێم هاریکاریا تەکەم؟',
+  ar: 'أهلاً وسهلاً! 😊 أنا هنا لمساعدتك بالطلب. كيف أقدر أساعدك؟',
+  en: 'Welcome! 😊 I\'m here to help you with your order. How can I help you today?',
+};
+
 // ─── CONVERSATIONS STORE ──────────────────────────────────────────────────────
 const sessionStore = require('./sessionStore');
 
@@ -524,6 +532,8 @@ async function handleNewMessage(pageId, senderId, messageText, messageId) {
     convo.state = 'lang';
     convo.lang  = null;
     convo.orders = [];
+    convo.chatHistory = [];
+    convo.currentSlots = { name: null, phone: null, address: null, product: null, notes: null };
     console.log(`🔄 [${senderId}] restarted`);
     await sessionStore.set(pageId, senderId, convo);
     await typingDelay(LANG_SELECT_MSG);
@@ -553,13 +563,26 @@ async function handleNewMessage(pageId, senderId, messageText, messageId) {
   if (convo.state === 'finished') {
     const t = text.trim();
     if (t === '1' || t === '١' || isRestart(t)) {
-      convo.state = 'menu';
-      convo.orders = [];
-      console.log(`🔄 [${senderId}] restarted from finished`);
-      await sessionStore.set(pageId, senderId, convo);
-      const L = getLangPack(convo);
-      await typingDelay(L.welcome);
-      await sendInstagramReply(pageId, senderId, L.welcome);
+      if (geminiService.isAIEnabled()) {
+        convo.state = 'ai_chat';
+        convo.orders = [];
+        convo.chatHistory = [];
+        convo.currentSlots = { name: null, phone: null, address: null, product: null, notes: null };
+        const greeting = AI_GREETINGS[convo.lang] || AI_GREETINGS.en;
+        convo.chatHistory = [{ role: 'model', parts: [{ text: greeting }] }];
+        console.log(`🔄 [${senderId}] restarted from finished (AI mode)`);
+        await sessionStore.set(pageId, senderId, convo);
+        await typingDelay(greeting);
+        await sendInstagramReply(pageId, senderId, greeting);
+      } else {
+        convo.state = 'menu';
+        convo.orders = [];
+        console.log(`🔄 [${senderId}] restarted from finished`);
+        await sessionStore.set(pageId, senderId, convo);
+        const L = getLangPack(convo);
+        await typingDelay(L.welcome);
+        await sendInstagramReply(pageId, senderId, L.welcome);
+      }
     } else {
       console.log(`🔕 [${senderId}] finished mode — bot silent for "${text}"`);
       await sessionStore.set(pageId, senderId, convo); // just save messageId
@@ -572,13 +595,28 @@ async function handleNewMessage(pageId, senderId, messageText, messageId) {
     const chosen = getLangChoice(text);
 
     if (chosen) {
-      convo.lang  = chosen;
-      convo.state = 'menu';
-      const L = getLangPack(convo);
-      console.log(`🌍 [${senderId}] selected lang: ${chosen}`);
-      await sessionStore.set(pageId, senderId, convo);
-      await typingDelay(L.langSelected);
-      await sendInstagramReply(pageId, senderId, L.langSelected + '\n\n' + L.welcome);
+      convo.lang = chosen;
+
+      if (geminiService.isAIEnabled()) {
+        // AI mode: go to ai_chat with a warm greeting
+        convo.state = 'ai_chat';
+        convo.chatHistory = [];
+        convo.currentSlots = { name: null, phone: null, address: null, product: null, notes: null };
+        const greeting = AI_GREETINGS[chosen] || AI_GREETINGS.en;
+        convo.chatHistory = [{ role: 'model', parts: [{ text: greeting }] }];
+        console.log(`🌍🧠 [${senderId}] selected lang: ${chosen} → AI mode`);
+        await sessionStore.set(pageId, senderId, convo);
+        await typingDelay(greeting);
+        await sendInstagramReply(pageId, senderId, greeting);
+      } else {
+        // Regex fallback: go to menu (same as before)
+        convo.state = 'menu';
+        const L = getLangPack(convo);
+        console.log(`🌍 [${senderId}] selected lang: ${chosen} → Regex mode`);
+        await sessionStore.set(pageId, senderId, convo);
+        await typingDelay(L.langSelected);
+        await sendInstagramReply(pageId, senderId, L.langSelected + '\n\n' + L.welcome);
+      }
     } else {
       // Any message that is not 1/2/3 → show language menu
       console.log(`🌍 [${senderId}] showing language menu`);
@@ -586,6 +624,12 @@ async function handleNewMessage(pageId, senderId, messageText, messageId) {
       await typingDelay(LANG_SELECT_MSG);
       await sendInstagramReply(pageId, senderId, LANG_SELECT_MSG);
     }
+    return;
+  }
+
+  // ── STATE: ai_chat (Gemini AI handles the conversation naturally) ───────────
+  if (convo.state === 'ai_chat') {
+    await handleAIChat(pageId, senderId, text, convo);
     return;
   }
 
@@ -796,6 +840,161 @@ async function finalizeAllOrders(pageId, senderId, convo, L) {
     convo.orders = [];
     await sessionStore.set(pageId, senderId, convo);
     console.log(`🏁 [${senderId}] session moved to finished state (waiting for 1)`);
+  }
+}
+
+// ─── AI CHAT HANDLER ──────────────────────────────────────────────────────────
+
+async function handleAIChat(pageId, senderId, text, convo) {
+  try {
+    const result = await geminiService.processMessage(
+      convo.lang,
+      convo.chatHistory || [],
+      convo.currentSlots || { name: null, phone: null, address: null, product: null, notes: null },
+      convo.orders.length,
+      text
+    );
+
+    // Update chat history
+    convo.chatHistory = result.updatedHistory;
+
+    // Update slots — merge extracted data (never overwrite with null)
+    if (result.extracted) {
+      const slots = convo.currentSlots || { name: null, phone: null, address: null, product: null, notes: null };
+      if (result.extracted.name) slots.name = result.extracted.name;
+      if (result.extracted.phone) slots.phone = result.extracted.phone;
+      if (result.extracted.address) slots.address = result.extracted.address;
+      if (result.extracted.product) slots.product = result.extracted.product;
+      if (result.extracted.notes) slots.notes = result.extracted.notes;
+      convo.currentSlots = slots;
+    }
+
+    console.log(`🧠 [${senderId}] AI action=${result.action} slots=[name:${convo.currentSlots.name ? '✅' : '❌'} phone:${convo.currentSlots.phone ? '✅' : '❌'} addr:${convo.currentSlots.address ? '✅' : '❌'} prod:${convo.currentSlots.product ? '✅' : '❌'}]`);
+
+    // ── Handle AI actions ──
+
+    if (result.action === 'order_confirmed') {
+      // Save the completed order
+      const order = {
+        name: convo.currentSlots.name,
+        phone: convo.currentSlots.phone,
+        address: convo.currentSlots.address,
+        product: convo.currentSlots.product,
+        notes: convo.currentSlots.notes || '—',
+      };
+      convo.orders.push(order);
+
+      // Clear product and notes for potential next order (keep name/phone/address)
+      convo.currentSlots.product = null;
+      convo.currentSlots.notes = null;
+
+      console.log(`✅ [${senderId}] AI order #${convo.orders.length} confirmed: ${order.product}`);
+
+      await sessionStore.set(pageId, senderId, convo);
+      await typingDelay(result.reply);
+      await sendInstagramReply(pageId, senderId, result.reply);
+
+    } else if (result.action === 'no_more_orders') {
+      console.log(`🏁 [${senderId}] AI: customer done — finalizing ${convo.orders.length} order(s)`);
+
+      // Send the AI's goodbye message first
+      await typingDelay(result.reply);
+      await sendInstagramReply(pageId, senderId, result.reply);
+
+      // Save to sheets and send telegram
+      if (convo.orders.length > 0) {
+        await finalizeOrdersAI(pageId, senderId, convo);
+      } else {
+        convo.state = 'finished';
+        convo.chatHistory = [];
+        convo.currentSlots = { name: null, phone: null, address: null, product: null, notes: null };
+        await sessionStore.set(pageId, senderId, convo);
+      }
+
+    } else if (result.action === 'human') {
+      convo.state = 'human';
+      console.log(`💬 [${senderId}] AI: switching to human mode`);
+      await sessionStore.set(pageId, senderId, convo);
+      await typingDelay(result.reply);
+      await sendInstagramReply(pageId, senderId, result.reply);
+
+    } else {
+      // Default: continue AI conversation
+      await sessionStore.set(pageId, senderId, convo);
+      await typingDelay(result.reply);
+      await sendInstagramReply(pageId, senderId, result.reply);
+    }
+
+  } catch (err) {
+    console.error(`❌ [${senderId}] Gemini AI error:`, err.message);
+
+    // On AI error, send a friendly apology
+    const errorMsg = {
+      ku: 'ببورە، کێشەیەک هەبوو. دوبارە بنێرە 🙏',
+      ar: 'عذراً، حدث خطأ. حاول مرة أخرى 🙏',
+      en: 'Sorry, something went wrong. Please try again 🙏',
+    }[convo.lang] || 'Sorry, please try again.';
+
+    await sessionStore.set(pageId, senderId, convo);
+    await sendInstagramReply(pageId, senderId, errorMsg);
+  }
+}
+
+// ─── FINALIZE ORDERS (AI MODE) ────────────────────────────────────────────────
+
+async function finalizeOrdersAI(pageId, senderId, convo) {
+  const now = new Date();
+  const date = now.toLocaleDateString('ar-IQ', { year: 'numeric', month: '2-digit', day: '2-digit' });
+  const time = now.toLocaleTimeString('ar-IQ', { hour: '2-digit', minute: '2-digit' });
+
+  let firstOrderNumber = null;
+
+  try {
+    for (let i = 0; i < convo.orders.length; i++) {
+      const order = convo.orders[i];
+
+      const sheetOrder = {
+        isOrder: true,
+        customer: `user_${senderId}`,
+        customerName: order.name,
+        phone: order.phone,
+        address: order.address,
+        product: order.product,
+        quantity: '1',
+        size: '—',
+        color: '—',
+        rawMessage: `Name: ${order.name}\nPhone: ${order.phone}\nAddress: ${order.address}\nProduct: ${order.product}\nNotes: ${order.notes}`,
+        source: 'DM (AI)',
+        date,
+        time,
+        status: '🟡 جديد',
+      };
+
+      const orderNumber = await appendOrder(pageId, sheetOrder);
+      if (i === 0) firstOrderNumber = orderNumber;
+
+      // Record phone for duplicate guard
+      await sessionStore.recordPhone(pageId, order.phone, order.product);
+
+      console.log(`💾 [${senderId}] AI order #${i + 1} saved as row #${orderNumber}`);
+    }
+
+    // Telegram notification
+    const telegramMsg = buildTelegramNotification(senderId, convo.orders, firstOrderNumber, convo.lang);
+    const { sendTelegram } = require('./telegramService');
+    await sendTelegram(pageId, telegramMsg);
+
+    console.log(`✅ [${senderId}] all ${convo.orders.length} AI order(s) finalized`);
+
+  } catch (err) {
+    console.error(`❌ [${senderId}] AI finalize failed:`, err.message);
+  } finally {
+    convo.state = 'finished';
+    convo.orders = [];
+    convo.chatHistory = [];
+    convo.currentSlots = { name: null, phone: null, address: null, product: null, notes: null };
+    await sessionStore.set(pageId, senderId, convo);
+    console.log(`🏁 [${senderId}] AI session moved to finished state`);
   }
 }
 

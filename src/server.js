@@ -10,6 +10,7 @@ const express = require('express');
 const { handleVerification, handleWebhookEvent } = require('./webhookHandler');
 const { initialize: initTokenManager } = require('./tokenManager');
 const { initTelegramBot } = require('./telegramService');
+const { initGemini } = require('./geminiService');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -46,7 +47,7 @@ app.post('/webhook', handleWebhookEvent);
 app.listen(PORT, async () => {
   console.log('');
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-  console.log('  🚀 Instagram Order Agent v2.0');
+  console.log('  🚀 Instagram Order Agent v4.0 (AI-Powered)');
   console.log(`  📡 Listening on port ${PORT}`);
   console.log('  💬 Auto-reply + Message buffering enabled');
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
@@ -58,6 +59,9 @@ app.listen(PORT, async () => {
   } catch (err) {
     console.warn('⚠️  Token manager init failed (check Meta credentials):', err.message);
   }
+
+  // Initialize Gemini AI
+  initGemini();
 
   // Initialize Telegram Bot
   initTelegramBot();
