@@ -2,31 +2,51 @@
  * geminiService.js
  *
  * Google Gemini AI integration for natural conversational order-taking.
- * Uses the REST API directly (no SDK) for maximum compatibility with
- * service-account-bound API keys (AQ. format).
+ * Authenticates using the SAME service account as Google Sheets (OAuth2).
+ * No separate API key needed!
  */
 
+const { google } = require('googleapis');
 const axios = require('axios');
 
-let apiKey = null;
+let authClient = null;
 
 const GEMINI_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent';
 
 // ─── INITIALIZATION ──────────────────────────────────────────────────────────
 
 function initGemini() {
-  const key = process.env.GEMINI_API_KEY;
-  if (!key) {
-    console.log('⚠️ No GEMINI_API_KEY found. AI mode disabled — using regex fallback.');
+  const email = process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL;
+  const privateKey = (process.env.GOOGLE_PRIVATE_KEY || '').replace(/\\n/g, '\n');
+
+  if (!email || !privateKey) {
+    console.log('⚠️ No service account credentials found. AI mode disabled.');
     return false;
   }
-  apiKey = key;
-  console.log('✅ Gemini AI initialized (REST API, gemini-2.0-flash)');
-  return true;
+
+  try {
+    authClient = new google.auth.JWT({
+      email,
+      key: privateKey,
+      scopes: ['https://www.googleapis.com/auth/generative-language'],
+    });
+    console.log('✅ Gemini AI initialized (OAuth2 via service account)');
+    return true;
+  } catch (err) {
+    console.error('❌ Failed to initialize Gemini:', err.message);
+    return false;
+  }
 }
 
 function isAIEnabled() {
-  return apiKey !== null;
+  return authClient !== null;
+}
+
+// ─── GET ACCESS TOKEN ────────────────────────────────────────────────────────
+
+async function getAccessToken() {
+  const tokens = await authClient.authorize();
+  return tokens.access_token;
 }
 
 // ─── SYSTEM PROMPT BUILDER ───────────────────────────────────────────────────
@@ -104,10 +124,10 @@ RULES FOR "extracted":
 - Extract names, addresses, and products in the customer's original language`;
 }
 
-// ─── MESSAGE PROCESSING (REST API) ──────────────────────────────────────────
+// ─── MESSAGE PROCESSING (OAuth2 REST API) ────────────────────────────────────
 
 async function processMessage(lang, chatHistory, currentSlots, completedOrdersCount, userMessage) {
-  if (!apiKey) {
+  if (!authClient) {
     throw new Error('Gemini AI not initialized');
   }
 
@@ -120,7 +140,7 @@ async function processMessage(lang, chatHistory, currentSlots, completedOrdersCo
     console.log('⚠️ Chat history was corrupted. Reset to empty.');
   }
 
-  // Build the request body for the REST API
+  // Build the request body
   const contents = [
     ...safeHistory,
     { role: 'user', parts: [{ text: userMessage }] },
@@ -138,21 +158,23 @@ async function processMessage(lang, chatHistory, currentSlots, completedOrdersCo
     },
   };
 
+  // Get a fresh OAuth2 access token from the service account
+  const accessToken = await getAccessToken();
+
   let response;
   try {
     response = await axios.post(
-      `${GEMINI_URL}?key=${apiKey}`,
+      GEMINI_URL,
       requestBody,
       {
         headers: {
           'Content-Type': 'application/json',
-          'x-goog-api-key': apiKey,
+          'Authorization': `Bearer ${accessToken}`,
         },
         timeout: 15000,
       }
     );
   } catch (apiErr) {
-    // Log the FULL error from Google so we can debug
     const errData = apiErr.response?.data;
     const errStatus = apiErr.response?.status;
     console.error(`❌ Gemini API ${errStatus} error:`, JSON.stringify(errData || apiErr.message).substring(0, 500));
@@ -180,7 +202,7 @@ async function processMessage(lang, chatHistory, currentSlots, completedOrdersCo
     { role: 'model', parts: [{ text: responseText }] },
   ];
 
-  // Trim to last 20 entries (10 exchanges) to control costs
+  // Trim to last 20 entries (10 exchanges)
   const trimmedHistory = updatedHistory.length > 20
     ? updatedHistory.slice(updatedHistory.length - 20)
     : updatedHistory;
