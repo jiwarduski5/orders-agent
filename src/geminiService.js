@@ -29,6 +29,14 @@ function buildSystemPrompt(lang, currentSlots, completedOrdersCount) {
   const langInstruction = {
     ku: `DIALECT RULE: You MUST speak EXACTLY like a real person from Duhok, Kurdistan (Badini dialect). 
 Use ONLY Arabic script. NEVER use Sorani words. 
+BADINI DICTIONARY (Use these exact phrases to sound kind and natural):
+- "چەوانی؟ باشی؟" (How are you?)
+- "سەرچاڤا" or "سەرچاڤان" (Sure / on my eyes)
+- "تە چ دڤێت؟" (What do you want?)
+- "گەلەک سپاس" (Thank you very much)
+- "د خزمەتا تە دامە" (I am at your service)
+- "باشە" (Okay)
+- "ببورە" (Sorry)
 FORBIDDEN WORDS (Never use these Sorani words): "چۆنی", "دەوێت", "بەخێربێیت", "پێویستە", "ئێستا".`,
     ar: 'You MUST respond in Iraqi Arabic. Chat warmly and naturally like an Iraqi person would.',
     en: 'You MUST respond in English. Chat warmly and naturally.',
