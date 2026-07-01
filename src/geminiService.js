@@ -2,57 +2,30 @@
  * geminiService.js
  *
  * Google Gemini AI integration for natural conversational order-taking.
- * Authenticates using the SAME service account as Google Sheets (OAuth2).
- * No separate API key needed!
+ * Uses the REST API directly for maximum compatibility.
  */
 
-const { google } = require('googleapis');
 const axios = require('axios');
 
-let authClient = null;
-let projectId = null;
+let apiKey = null;
+
+const GEMINI_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent';
 
 // ─── INITIALIZATION ──────────────────────────────────────────────────────────
 
 function initGemini() {
-  const email = process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL;
-  const privateKey = (process.env.GOOGLE_PRIVATE_KEY || '').replace(/\\n/g, '\n');
-
-  if (!email || !privateKey) {
-    console.log('⚠️ No service account credentials found. AI mode disabled.');
+  const key = process.env.GEMINI_API_KEY;
+  if (!key) {
+    console.log('⚠️ No GEMINI_API_KEY found. AI mode disabled — using regex fallback.');
     return false;
   }
-
-  try {
-    authClient = new google.auth.JWT({
-      email,
-      key: privateKey,
-      scopes: ['https://www.googleapis.com/auth/cloud-platform'],
-    });
-
-    // Extract project ID from service account email: name@PROJECT_ID.iam.gserviceaccount.com
-    const emailParts = email.split('@');
-    if (emailParts.length === 2) {
-      projectId = emailParts[1].replace('.iam.gserviceaccount.com', '');
-    }
-
-    console.log(`✅ Gemini AI initialized (Vertex AI, project: ${projectId})`);
-    return true;
-  } catch (err) {
-    console.error('❌ Failed to initialize Gemini:', err.message);
-    return false;
-  }
+  apiKey = key;
+  console.log('✅ Gemini AI initialized (REST API, gemini-3.5-flash)');
+  return true;
 }
 
 function isAIEnabled() {
-  return authClient !== null;
-}
-
-// ─── GET ACCESS TOKEN ────────────────────────────────────────────────────────
-
-async function getAccessToken() {
-  const tokens = await authClient.authorize();
-  return tokens.access_token;
+  return apiKey !== null;
 }
 
 // ─── SYSTEM PROMPT BUILDER ───────────────────────────────────────────────────
@@ -130,10 +103,10 @@ RULES FOR "extracted":
 - Extract names, addresses, and products in the customer's original language`;
 }
 
-// ─── MESSAGE PROCESSING (OAuth2 REST API) ────────────────────────────────────
+// ─── MESSAGE PROCESSING (REST API) ──────────────────────────────────────────
 
 async function processMessage(lang, chatHistory, currentSlots, completedOrdersCount, userMessage) {
-  if (!authClient) {
+  if (!apiKey) {
     throw new Error('Gemini AI not initialized');
   }
 
@@ -146,14 +119,14 @@ async function processMessage(lang, chatHistory, currentSlots, completedOrdersCo
     console.log('⚠️ Chat history was corrupted. Reset to empty.');
   }
 
-  // Build the request body
+  // Build the request body for the REST API
   const contents = [
     ...safeHistory,
     { role: 'user', parts: [{ text: userMessage }] },
   ];
 
   const requestBody = {
-    systemInstruction: {
+    system_instruction: {
       parts: [{ text: systemPrompt }],
     },
     contents,
@@ -164,26 +137,20 @@ async function processMessage(lang, chatHistory, currentSlots, completedOrdersCo
     },
   };
 
-  // Get a fresh OAuth2 access token from the service account
-  const accessToken = await getAccessToken();
-
-  // Vertex AI endpoint — works with service account auth
-  const geminiUrl = `https://us-central1-aiplatform.googleapis.com/v1/projects/${projectId}/locations/us-central1/publishers/google/models/gemini-2.0-flash:generateContent`;
-
   let response;
   try {
     response = await axios.post(
-      geminiUrl,
+      `${GEMINI_URL}?key=${apiKey}`,
       requestBody,
       {
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${accessToken}`,
         },
         timeout: 15000,
       }
     );
   } catch (apiErr) {
+    // Log the FULL error from Google so we can debug
     const errData = apiErr.response?.data;
     const errStatus = apiErr.response?.status;
     console.error(`❌ Gemini API ${errStatus} error:`, JSON.stringify(errData || apiErr.message).substring(0, 500));
@@ -211,7 +178,7 @@ async function processMessage(lang, chatHistory, currentSlots, completedOrdersCo
     { role: 'model', parts: [{ text: responseText }] },
   ];
 
-  // Trim to last 20 entries (10 exchanges)
+  // Trim to last 20 entries (10 exchanges) to control costs
   const trimmedHistory = updatedHistory.length > 20
     ? updatedHistory.slice(updatedHistory.length - 20)
     : updatedHistory;
