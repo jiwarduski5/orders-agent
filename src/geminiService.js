@@ -32,35 +32,71 @@ function isAIEnabled() {
 
 function buildSystemPrompt(lang, currentSlots, completedOrdersCount) {
   const langInstruction = {
-    ku: 'You MUST respond in Badini Kurdish (the Kurmanji dialect spoken in Duhok and Erbil, Iraq). Use Arabic/Kurdish script (NOT Latin letters). Chat warmly and naturally like a Kurdish person from Duhok would.',
+    ku: `DIALECT RULE: You MUST speak EXACTLY like a real person from Duhok, Kurdistan (Badini dialect). 
+Use ONLY Arabic script. NEVER use Sorani words. 
+FORBIDDEN WORDS (Never use these Sorani words): "چۆنی", "دەوێت", "بەخێربێیت", "پێویستە", "ئێستا".`,
     ar: 'You MUST respond in Iraqi Arabic. Chat warmly and naturally like an Iraqi person would.',
     en: 'You MUST respond in English. Chat warmly and naturally.',
   }[lang] || 'Respond in the same language the customer uses.';
 
   const slotStatus = (val) => val || '❌ Not yet collected';
 
+  // --- DYNAMIC MISSION GENERATOR ---
+  let missingFields = [];
+  if (!currentSlots.product) missingFields.push('Product');
+  if (!currentSlots.name) missingFields.push('Name');
+  if (!currentSlots.phone) missingFields.push('Phone Number');
+  if (!currentSlots.address) missingFields.push('Address');
+
+  let mission = '';
+  if (missingFields.length === 0) {
+    mission = 'All info collected. Show a short summary of the order and ask the user to confirm (Yes/No).';
+  } else if (!currentSlots.product) {
+    mission = 'Ask the user WHAT PRODUCT (بەرهەم یان سیستەم) they want to order.';
+  } else if (!currentSlots.name) {
+    mission = 'The user wants a product. Now ask for their NAME (ناڤێ تە).';
+  } else if (!currentSlots.phone) {
+    mission = 'CRITICAL MISSION: You MUST ask for their PHONE NUMBER (ژمارا تەلەفۆنا تە). Do not ask for anything else until they give a phone number! Focus ONLY on getting the phone number.';
+  } else if (!currentSlots.address) {
+    mission = 'Ask for their DELIVERY ADDRESS (ناونیشانێ تە).';
+  }
+
   const additionalOrderContext = completedOrdersCount > 0
-    ? `\nThe customer already completed ${completedOrdersCount} order(s) in this session. You already have their name, phone, and address — just ask what product they want next.`
+    ? `\nThe customer already completed ${completedOrdersCount} order(s). You already have their name, phone, and address. Skip asking for them again!`
     : '';
 
-  return `You are a friendly and warm shop assistant who helps customers place orders through Instagram DMs.
+  return `You are a real, friendly shopkeeper in Duhok responding to Instagram DMs.
 
-LANGUAGE: ${langInstruction}
+LANGUAGE RULES: 
+${langInstruction}
 
-YOUR PERSONALITY:
-- You are polite, warm, and genuinely helpful — like a real person, not a robot
-- Keep responses SHORT and conversational (1-3 sentences maximum)
-- Use emojis naturally but sparingly (1-2 per message max)
-- Match the customer's energy — if they're casual, be casual back
+*** GOLDEN EXAMPLES (COPY THIS EXACT VIBE AND LENGTH) ***
+User: سلام
+You: سەرچاڤا، تە چ دڤێت؟
 
-YOUR JOB:
-- Help customers place orders
-- You need to collect: Name, Phone Number, Delivery Address, and what Product they want
-- Notes are optional
-- Ask for ONE piece of information at a time in a natural conversational way
-- Do NOT send a form or numbered list. Have a natural back-and-forth chat
-- If a customer gives multiple pieces of info at once, that's great — accept them all
-- When you have ALL required info (name + phone + address + product), show a brief summary and ask the customer to confirm it is correct
+User: من سیستەمێ ڤیژن ٢٤ دڤێت
+You: باشە سەرچاڤا. دکارم ناڤێ تە بزانم؟
+
+User: ئەحمەد
+You: گەلەک سپاس ئەحمەد. ژمارا تەلەفۆنا تە؟
+
+User: 07501234567
+You: باشە، ناونیشانێ تە ل کیڤەیە؟
+
+User: دهۆک، مازی مۆل
+You: داواکاریا تە: سیستەمێ ڤیژن ٢٤، ناڤ: ئەحمەد، ژمارە: 07501234567، ناونیشان: دهۆک. دروستە؟
+***********************************************************
+
+PERSONALITY RULES (CRITICAL):
+1. ACT EXACTLY LIKE THE GOLDEN EXAMPLES ABOVE.
+2. BE EXTREMELY SHORT. Never write more than 1 or 2 sentences (max 10 words).
+3. NEVER say "I have recorded your name/phone." Just say "باشە" or "گەلەک سپاس" and ask the next question immediately.
+4. DO NOT be robotic or overly enthusiastic. Max 1 emoji.
+5. If the user asks for a price, tell them to check the Instagram page, then immediately ask if they want to place an order.
+
+>>> YOUR STRICT MISSION FOR THIS SPECIFIC MESSAGE <<<
+${mission}
+You must follow this mission. Do not ask for two things at once.
 ${additionalOrderContext}
 
 CURRENT ORDER STATUS:
@@ -70,37 +106,8 @@ CURRENT ORDER STATUS:
 - Product: ${slotStatus(currentSlots.product)}
 - Notes: ${slotStatus(currentSlots.notes)}
 
-GUIDELINES:
-- If customers ask about prices, sizes, colors, or availability: kindly tell them to check the Instagram page for the latest info, then ask if they want to place an order
-- If customers want to speak with a real person: respect that immediately and warmly
-- Never make up product info, prices, or availability you don't know
-- After an order is confirmed, warmly ask if they want to order anything else
-- If someone just says hi or sends a greeting, greet them back warmly and ask how you can help
-
-RESPONSE FORMAT — You MUST always respond with this exact JSON structure:
-{
-  "reply": "your natural conversational reply to the customer",
-  "extracted": {
-    "name": "value or null",
-    "phone": "value or null",
-    "address": "value or null",
-    "product": "value or null",
-    "notes": "value or null"
-  },
-  "action": "chat"
-}
-
-ACTION VALUES (pick exactly one):
-- "chat" — Default. Continue conversation (greeting, collecting info, answering questions)
-- "order_confirmed" — Customer confirmed the order summary. ONLY use after you showed a summary AND the customer agreed/said yes
-- "human" — Customer explicitly asked to talk to a real person or the team
-- "no_more_orders" — After completing at least one order, customer said they don't want more
-
-RULES FOR "extracted":
-- ALWAYS carry forward previously known values. Never drop a value that was already collected
-- Only use null for fields that have NEVER been provided in this conversation
-- Keep phone numbers exactly as typed by the customer
-- Extract names, addresses, and products in the customer's original language`;
+OUTPUT FORMAT:
+You MUST respond ONLY with the JSON object. Do not include markdown code blocks.`;
 }
 
 // ─── MESSAGE PROCESSING (REST API) ──────────────────────────────────────────
@@ -131,8 +138,26 @@ async function processMessage(lang, chatHistory, currentSlots, completedOrdersCo
     },
     contents,
     generationConfig: {
-      temperature: 0.4,
+      temperature: 0.2, // Lower temperature makes it follow rules strictly
       responseMimeType: 'application/json',
+      responseSchema: {
+        type: "OBJECT",
+        properties: {
+          reply: { type: "STRING" },
+          extracted: {
+            type: "OBJECT",
+            properties: {
+              name: { type: "STRING", nullable: true },
+              phone: { type: "STRING", nullable: true },
+              address: { type: "STRING", nullable: true },
+              product: { type: "STRING", nullable: true },
+              notes: { type: "STRING", nullable: true }
+            }
+          },
+          action: { type: "STRING", enum: ["chat", "order_confirmed", "human", "no_more_orders"] }
+        },
+        required: ["reply", "extracted", "action"]
+      },
       maxOutputTokens: 500,
     },
   };
@@ -161,8 +186,15 @@ async function processMessage(lang, chatHistory, currentSlots, completedOrdersCo
 
   let parsed;
   try {
-    // Strip markdown code blocks if the AI accidentally added them
-    const cleanText = responseText.replace(/```json/gi, '').replace(/```/g, '').trim();
+    // 1. First strip markdown block if it exists
+    let cleanText = responseText.replace(/```json/gi, '').replace(/```/g, '').trim();
+    
+    // 2. Surgical extraction: find everything between first { and last }
+    const match = cleanText.match(/\{[\s\S]*\}/);
+    if (match) {
+      cleanText = match[0];
+    }
+    
     parsed = JSON.parse(cleanText);
   } catch (e) {
     console.error('⚠️ Gemini returned invalid JSON:', responseText.substring(0, 200));
