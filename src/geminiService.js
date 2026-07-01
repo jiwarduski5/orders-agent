@@ -10,8 +10,7 @@ const { google } = require('googleapis');
 const axios = require('axios');
 
 let authClient = null;
-
-const GEMINI_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent';
+let projectId = null;
 
 // ─── INITIALIZATION ──────────────────────────────────────────────────────────
 
@@ -28,9 +27,16 @@ function initGemini() {
     authClient = new google.auth.JWT({
       email,
       key: privateKey,
-      scopes: ['https://www.googleapis.com/auth/generative-language'],
+      scopes: ['https://www.googleapis.com/auth/cloud-platform'],
     });
-    console.log('✅ Gemini AI initialized (OAuth2 via service account)');
+
+    // Extract project ID from service account email: name@PROJECT_ID.iam.gserviceaccount.com
+    const emailParts = email.split('@');
+    if (emailParts.length === 2) {
+      projectId = emailParts[1].replace('.iam.gserviceaccount.com', '');
+    }
+
+    console.log(`✅ Gemini AI initialized (Vertex AI, project: ${projectId})`);
     return true;
   } catch (err) {
     console.error('❌ Failed to initialize Gemini:', err.message);
@@ -147,7 +153,7 @@ async function processMessage(lang, chatHistory, currentSlots, completedOrdersCo
   ];
 
   const requestBody = {
-    system_instruction: {
+    systemInstruction: {
       parts: [{ text: systemPrompt }],
     },
     contents,
@@ -161,10 +167,13 @@ async function processMessage(lang, chatHistory, currentSlots, completedOrdersCo
   // Get a fresh OAuth2 access token from the service account
   const accessToken = await getAccessToken();
 
+  // Vertex AI endpoint — works with service account auth
+  const geminiUrl = `https://us-central1-aiplatform.googleapis.com/v1/projects/${projectId}/locations/us-central1/publishers/google/models/gemini-2.0-flash:generateContent`;
+
   let response;
   try {
     response = await axios.post(
-      GEMINI_URL,
+      geminiUrl,
       requestBody,
       {
         headers: {
