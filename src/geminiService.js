@@ -161,11 +161,15 @@ async function processMessage(lang, chatHistory, currentSlots, completedOrdersCo
 
   let parsed;
   try {
-    parsed = JSON.parse(responseText);
+    // Strip markdown code blocks if the AI accidentally added them
+    const cleanText = responseText.replace(/```json/gi, '').replace(/```/g, '').trim();
+    parsed = JSON.parse(cleanText);
   } catch (e) {
     console.error('⚠️ Gemini returned invalid JSON:', responseText.substring(0, 200));
+    // Super safe fallback if JSON completely fails
+    const fallbackMatch = responseText.match(/"reply"\s*:\s*"([^"]+)"/i);
     parsed = {
-      reply: responseText.replace(/[{}"]/g, '').trim().substring(0, 300) || 'ببورە، دوبارە بنێرە.',
+      reply: fallbackMatch ? fallbackMatch[1] : 'ببورە، دوبارە بنێرە.',
       extracted: {},
       action: 'chat',
     };
