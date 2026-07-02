@@ -121,12 +121,10 @@ async function processMessage(lang, chatHistory, currentSlots, completedOrdersCo
     try {
       let response = await callGemini(apiKey, systemPrompt, contents, tools);
 
-      if (!response.data.candidates || response.data.candidates.length === 0) {
+      let part = response.data.candidates?.[0]?.content?.parts?.[0];
+      if (!part) {
         throw new Error('Empty response from Gemini');
       }
-
-      let content = response.data.candidates[0].content;
-      let part = content.parts[0];
 
       let extractedData = {};
       let actionStr = "chat";
