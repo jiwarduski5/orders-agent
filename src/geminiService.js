@@ -121,9 +121,11 @@ async function processMessage(lang, chatHistory, currentSlots, completedOrdersCo
     try {
       let response = await callGemini(apiKey, systemPrompt, contents, tools);
 
-      let part = response.data.candidates?.[0]?.content?.parts?.[0];
+      let candidate = response.data.candidates?.[0];
+      let part = candidate?.content?.parts?.[0];
       if (!part) {
-        throw new Error('Empty response from Gemini');
+        console.log(`  Key #${attempt + 1} empty response, trying next...`);
+        continue;
       }
 
       let extractedData = {};
@@ -139,13 +141,13 @@ async function processMessage(lang, chatHistory, currentSlots, completedOrdersCo
           actionStr = "order_confirmed";
         }
 
-        contents.push(content);
+        contents.push(candidate.content);
         contents.push({
           role: 'function',
           parts: [{
             functionResponse: {
               name: part.functionCall.name,
-              response: { name: part.functionCall.name, content: { status: 'success' } }
+              response: { status: 'success' }
             }
           }]
         });
@@ -157,6 +159,7 @@ async function processMessage(lang, chatHistory, currentSlots, completedOrdersCo
       }
 
       finalReply = finalReply.replace(/[\*\_]/g, '').trim();
+      if (!finalReply) finalReply = "باشە";
 
       const updatedHistory = [
         ...safeHistory,
@@ -184,7 +187,8 @@ async function processMessage(lang, chatHistory, currentSlots, completedOrdersCo
         console.log(`  Key #${attempt + 1} server error, trying next...`);
         continue;
       }
-      throw error;
+      console.log(`  Key #${attempt + 1} error: ${error.message}, trying next...`);
+      continue;
     }
   }
 
