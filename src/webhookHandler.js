@@ -77,9 +77,13 @@ function handleVerification(req, res) {
 }
 
 async function handleWebhookEvent(req, res) {
+  console.log('  Webhook received');
   res.status(200).send('EVENT_RECEIVED');
 
-  if (!verifyMetaSignature(req)) return;
+  if (!verifyMetaSignature(req)) {
+    console.log('  Webhook signature invalid — dropped');
+    return;
+  }
 
   const body = req.body;
 
