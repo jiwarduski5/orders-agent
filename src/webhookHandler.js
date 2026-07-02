@@ -7,6 +7,9 @@ const { handleNewMessage } = require('./conversationManager');
 const processedIds = new Set();
 
 function verifyMetaSignature(req) {
+  const secret = process.env.META_APP_SECRET;
+  if (!secret) return true;
+
   const signature = req.headers['x-hub-signature-256'];
   if (!signature) {
     return false;
@@ -15,7 +18,7 @@ function verifyMetaSignature(req) {
   const expectedSignature =
     'sha256=' +
     crypto
-      .createHmac('sha256', process.env.META_APP_SECRET)
+      .createHmac('sha256', secret)
       .update(req.rawBody || JSON.stringify(req.body))
       .digest('hex');
 
